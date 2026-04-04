@@ -1,10 +1,10 @@
 name: kubstu-docs-back
 
 services:
-  kubstu-docs-back-app:
+  app:
     image: kubstu-docs-back-image
     build: .
-    container_name: kubstu-docs-back-app-1
+    container_name: app-1
     env_file: .env
     ports:
       - "8000:8000"
