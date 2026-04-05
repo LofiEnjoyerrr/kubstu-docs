@@ -4,6 +4,8 @@ import TheWelcome from '../components/TheWelcome.vue'
 
 <template>
   <main>
-    <TheWelcome />
+    <!-- <TheWelcome /> -->
+    
+    <RouterLink to="/editor">Редактор</RouterLink>
   </main>
 </template>
