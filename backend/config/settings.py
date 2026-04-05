@@ -25,7 +25,11 @@ INSTALLED_APPS = [
     'django.contrib.staticfiles',
     # site-packages
     'channels',
+    'rest_framework',
     # apps
+    'users',
+    'docs',
+    'realtime',
 ]
 
 MIDDLEWARE = [
@@ -68,6 +72,15 @@ DATABASES = {
     }
 }
 
+CHANNEL_LAYERS = {
+    "default": {
+        "BACKEND": "channels_redis.core.RedisChannelLayer",
+        "CONFIG": {
+            "hosts": [("127.0.0.1", 6379)],
+        },
+    },
+}
+
 AUTH_PASSWORD_VALIDATORS = [
     {
         'NAME': 'django.contrib.auth.password_validation.UserAttributeSimilarityValidator',
@@ -82,6 +95,12 @@ AUTH_PASSWORD_VALIDATORS = [
         'NAME': 'django.contrib.auth.password_validation.NumericPasswordValidator',
     },
 ]
+
+REST_FRAMEWORK = {
+    "DEFAULT_AUTHENTICATION_CLASSES": [
+        "rest_framework.authentication.SessionAuthentication",
+    ],
+}
 
 LANGUAGE_CODE = 'ru'
 USE_I18N = True
