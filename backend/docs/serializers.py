@@ -2,7 +2,7 @@ from rest_framework import serializers
 from .models import Document
 
 
-class MeDocumentsSerializer(serializers.ModelSerializer):
+class DocumentSerializer(serializers.ModelSerializer):
     owner = serializers.ReadOnlyField(source='owner.username')
 
     class Meta:
