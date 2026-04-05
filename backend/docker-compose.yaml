@@ -17,6 +17,7 @@ services:
 
   db:
     image: postgres
+    container_name: db-1
     env_file:
     - .env
     environment:
