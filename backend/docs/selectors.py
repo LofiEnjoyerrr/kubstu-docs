@@ -6,6 +6,9 @@ from docs.models import Document
 def get_user_documents(user):
     return Document.objects.filter(owner=user)
 
+def get_user_opened_documents(user):
+    return Document.objects.filter(accesses__user=user)
+
 def get_available_documents(user):
     return Document.objects.filter(
         Q(owner=user) | Q(accesses__user=user)
