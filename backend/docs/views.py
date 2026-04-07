@@ -1,12 +1,11 @@
 from rest_framework import status
-from rest_framework.generics import RetrieveUpdateAPIView, ListAPIView
+from rest_framework.generics import RetrieveUpdateAPIView
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
-from common_utils.decorators import sql_counter
 from docs.serializers import GetDocumentSerializer, PostDocumentSerializer
-from docs.selectors import get_user_documents, get_available_documents_sorted, get_available_documents
+from docs.selectors import get_user_documents, get_available_documents, get_user_opened_documents
 
 
 class MeDocumentsListCreateAPIView(APIView):
@@ -38,14 +37,17 @@ class MeDocumentsListCreateAPIView(APIView):
         )
 
 
-class DocumentsAvailableListAPIView(ListAPIView):
-    serializer_class = GetDocumentSerializer
+class DocumentsAvailableListAPIView(APIView):
     permission_classes = [IsAuthenticated]
 
-    def get_queryset(self):
-        return get_available_documents_sorted(self.request.user).select_related('owner').prefetch_related(
-            'accesses__user',
-        )
+    def get(self, request):
+        owner_documents = get_user_documents(self.request.user).select_related('owner')
+        opened_documents = get_user_opened_documents(self.request.user).select_related('owner')
+        response_data = {
+            'owner_documents': GetDocumentSerializer(owner_documents, many=True).data,
+            'opened_documents': GetDocumentSerializer(opened_documents, many=True).data,
+        }
+        return Response(response_data, status=status.HTTP_200_OK)
 
 
 class DocumentsRetrieveUpdateAPIView(RetrieveUpdateAPIView):
