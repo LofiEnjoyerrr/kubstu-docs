@@ -3,25 +3,12 @@ from django.contrib.auth import get_user_model
 from django.db.models import UniqueConstraint
 
 from common_utils.orm.mixins import AutoDateMixin
-
-User = get_user_model()
+from users.models import User
 
 
 class Document(AutoDateMixin):
-    TYPE_CHOICES = [
-        ('public', 'Публичный'),
-        ('private', 'Приватный'),
-    ]
-    
     title = models.CharField(max_length=255, verbose_name='Заголовок документа')
     content = models.TextField(blank=True, default='', db_default='', verbose_name='Текст документа')
-    type = models.CharField(
-        max_length=20,
-        choices=TYPE_CHOICES,
-        default='public',
-        db_default='public',
-        verbose_name='Тип документа',
-    )
 
     owner = models.ForeignKey(
         User,
