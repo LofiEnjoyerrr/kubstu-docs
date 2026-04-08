@@ -73,7 +73,7 @@ const users  = ref([])
 
 provider.on('status', ({ status: s }) => { status.value = s })
 provider.awareness.on('change', () => {
-    users = [...provider.awareness.getStates().values()]
+    users.value = [...provider.awareness.getStates().values()]
       .map(s => s.user)
       .filter(Boolean)
   })
