@@ -55,12 +55,7 @@ class PostDocumentSerializer(serializers.ModelSerializer):
     class Meta:
         model = Document
         fields = (
-            'id',
             'title',
-            'content',
-            'owner',
-            'dt_created',
-            'dt_updated',
             'accesses',
         )
 

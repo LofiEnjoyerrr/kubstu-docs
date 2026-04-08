@@ -1,6 +1,6 @@
 from drf_spectacular.utils import extend_schema
 from rest_framework import status
-from rest_framework.generics import RetrieveUpdateAPIView
+from rest_framework.generics import RetrieveUpdateAPIView, RetrieveAPIView
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
 from rest_framework.views import APIView
@@ -13,19 +13,6 @@ class MeDocumentsListCreateAPIView(APIView):
     get_serializer_class = GetDocumentSerializer
     post_serializer_class = PostDocumentSerializer
     permission_classes = [IsAuthenticated]
-
-    @extend_schema(
-        responses=GetDocumentSerializer(),
-    )
-    def get(self, request, *args, **kwargs):
-        owner_documents = get_user_documents(
-            self.request.user,
-        ).select_related('owner').prefetch_related('accesses__user')
-        serializer = self.get_serializer_class(instance=owner_documents, many=True)
-        return Response(
-            serializer.data,
-            status=status.HTTP_200_OK,
-        )
 
     @extend_schema(
         request=PostDocumentSerializer(),
@@ -61,7 +48,7 @@ class DocumentsAvailableListAPIView(APIView):
         return Response(response_data, status=status.HTTP_200_OK)
 
 
-class DocumentsRetrieveUpdateAPIView(RetrieveUpdateAPIView):
+class DocumentsRetrieveAPIView(RetrieveAPIView):
     serializer_class = GetDocumentSerializer
     permission_classes = [IsAuthenticated]
 
