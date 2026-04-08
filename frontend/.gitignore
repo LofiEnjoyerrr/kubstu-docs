@@ -38,4 +38,4 @@ __screenshots__/
 # Vite
 *.timestamp-*-*.mjs
 
-./.vite/
+.vite/
