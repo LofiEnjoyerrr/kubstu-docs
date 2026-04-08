@@ -15,6 +15,9 @@ DEBUG = env.bool('DEBUG')
 ALLOWED_HOSTS = []
 INTERNAL_IPS  = ['172.18.0.1']
 
+CORS_ALLOW_ALL_ORIGINS = True
+CORS_ALLOW_CREDENTIALS = True
+
 INSTALLED_APPS = [
     # django
     'django.contrib.admin',
@@ -27,6 +30,7 @@ INSTALLED_APPS = [
     'channels',
     'rest_framework',
     'drf_spectacular',
+    'corsheaders',
     # apps
     'users',
     'docs',
@@ -36,6 +40,7 @@ INSTALLED_APPS = [
 MIDDLEWARE = [
     'django.middleware.security.SecurityMiddleware',
     'django.contrib.sessions.middleware.SessionMiddleware',
+    'corsheaders.middleware.CorsMiddleware',
     'django.middleware.common.CommonMiddleware',
     'django.middleware.csrf.CsrfViewMiddleware',
     'django.contrib.auth.middleware.AuthenticationMiddleware',
