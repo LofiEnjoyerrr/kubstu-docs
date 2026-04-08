@@ -1,4 +1,4 @@
-from django.contrib.auth import authenticate, get_user_model
+from django.contrib.auth import authenticate
 from rest_framework import serializers
 
 from users.models import User
@@ -6,7 +6,7 @@ from users.models import User
 
 class LoginSerializer(serializers.Serializer):
     username = serializers.CharField()
-    password = serializers.CharField(write_only=True)
+    password = serializers.CharField()
 
     def validate(self, data):
         user = authenticate(
@@ -19,20 +19,6 @@ class LoginSerializer(serializers.Serializer):
 
         data['user'] = user
         return data
-
-
-class UserSerializer(serializers.ModelSerializer):
-    class Meta:
-        model = User
-        fields = (
-            'id',
-            'username',
-            'email',
-            'first_name',
-            'last_name',
-            'avatar',
-            'color',
-        )
 
 
 class RegisterSerializer(serializers.ModelSerializer):
@@ -51,7 +37,3 @@ class RegisterSerializer(serializers.ModelSerializer):
         user.set_password(password)
         user.save()
         return user
-
-
-class FindUserSerializer(serializers.Serializer):
-    username = serializers.CharField()
