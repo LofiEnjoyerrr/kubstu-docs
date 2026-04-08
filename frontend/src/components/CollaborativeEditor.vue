@@ -1,28 +1,17 @@
 <template>
+  <div class="mb-5">
+    <v-btn
+      elevation="0"
+      color="#FF8C00"
+      @click="backToMainPage()"
+    >
+      Главная страница
+    </v-btn>
+  </div>
+
   <div class="wrapper">
     <div class="header">
       <span class="title">Название документа</span>
-      <v-menu>
-        <template v-slot:activator="{ props }">
-          <v-btn
-            color="white"
-            v-bind="props"
-            elevation="0"
-          >
-            Экспортировать...
-          </v-btn>
-        </template>
-        <v-list>
-          <v-list-item
-            v-for="(item, index) in exportOptions"
-            :key="index"
-            :value="index"
-          >
-            <v-list-item-title>{{ item.title }}</v-list-item-title>
-          </v-list-item>
-        </v-list>
-      </v-menu>
-      <span>Текущие пользователи <v-icon icon="$vuetify"></v-icon></span>
       <span class="badge" :class="status === 'connected' ? 'online' : 'connecting'">
         {{ status === 'connected' ? '' : 'Подключаемся…' }}
       </span>
@@ -59,22 +48,23 @@
 </template>
 
 <script setup>
-import { ref, onBeforeUnmount } from 'vue'
+import { ref, onMounted, onBeforeUnmount } from 'vue'
 import { useEditor, EditorContent } from '@tiptap/vue-3'
 import StarterKit from '@tiptap/starter-kit'
 import Collaboration from '@tiptap/extension-collaboration'
 import * as Y from 'yjs'
 import { WebsocketProvider } from 'y-websocket'
+import { useRouter, useRoute } from 'vue-router'
+import { useDocumentStore } from '@/stores/document'
 
 const USER_COLORS = ['#F98181', '#FBBC88', '#FAF594', '#70CFF8', '#94FADB', '#B9F18D']
-const exportOptions = [
-        { title: '.txt' },
-        { title: '.docx' },
-      ]
 const randomColor = () => USER_COLORS[Math.floor(Math.random() * USER_COLORS.length)]
 const randomName  = () => `User ${Math.floor(Math.random() * 1000)}`
 
 const ydoc = new Y.Doc()
+const router = useRouter()
+const route = useRoute()
+const document = useDocumentStore();
 
 const provider = new WebsocketProvider('ws://localhost:1234', 'my-document-room', ydoc)
 
@@ -83,9 +73,10 @@ const users  = ref([])
 
 provider.on('status', ({ status: s }) => { status.value = s })
 provider.awareness.on('change', () => {
-  users.value = [...provider.awareness.getStates().values()].map(s => s.user).filter(Boolean)
-})
-
+    users = [...provider.awareness.getStates().values()]
+      .map(s => s.user)
+      .filter(Boolean)
+  })
 const editor = useEditor({
   extensions: [
     StarterKit.configure({ history: false }),
@@ -101,6 +92,28 @@ const editor = useEditor({
   },
 })
 
+const backToMainPage = () => {
+  router.push('/');
+}
+
+onMounted(async () => {
+  let documentObj;
+
+  try {
+    documentObj = await document.fetchDocument(route.params.id)
+  } catch (error) {
+    console.error(error)
+
+    editor.value.commands.setContent('жопа')
+
+    return
+  }
+
+  if (documentObj.content) {
+    editor.value.commands.setContent(documentObj.content)
+  } 
+})
+
 onBeforeUnmount(() => {
   editor.value?.destroy()
   provider.destroy()
@@ -109,7 +122,8 @@ onBeforeUnmount(() => {
 
 <style scoped>
 .wrapper {
-  max-width: 95vw; margin: 40px auto;
+  max-width: 95vw;
+  flex: 1;
   font-family: 'Segoe UI', sans-serif;
   border: 1px solid #e2e8f0; border-radius: 12px;
   overflow: hidden; box-shadow: 0 4px 24px rgba(0,0,0,.08);

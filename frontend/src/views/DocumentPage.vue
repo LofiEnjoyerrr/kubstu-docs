@@ -1,6 +1,4 @@
 <template>
-    
-
     <CollaborativeEditor />
 </template>
 
