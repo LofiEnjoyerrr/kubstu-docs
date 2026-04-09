@@ -16,7 +16,7 @@
 
       <v-btn 
         variant="plain"
-        @click="logout"
+        @click="user.logout"
       >Выйти</v-btn>
     </div>
   </div>

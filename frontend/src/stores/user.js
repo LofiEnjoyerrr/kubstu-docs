@@ -34,7 +34,9 @@ export const useUserStore = defineStore('user', {
         async logout() {
             await api.post('/api/users/logout/')
 
-            localStorage.setItem('username', '');
+            await localStorage.setItem('username', '');
+
+            location.reload()
         },
 
 
