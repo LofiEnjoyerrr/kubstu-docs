@@ -26,15 +26,45 @@
     class="pa-5 bg-white main-card"
     outlined
   >
-    <div class="documents-card-wrapper">
+    <div style="font-size: 40px;">Созданные вами документы:</div>
+    <div 
+      v-if="createdDocuments.length" 
+      class="documents-card-wrapper"
+    >
       <DocumentCard 
-        v-for="document in documents"
+        v-for="document in createdDocuments"
         :title="document.title" 
         :owner="document.owner" 
         :creationDate="document.dt_created"
         @click="openDocument(document.id)"
       />
     </div>
+
+    <div v-else>
+      Вы ещё не создали ни один документ
+
+      <v-btn
+        append-icon="mdi-plus"
+        elevation="0"
+        color="#FF8C00"
+        @click="openNewDocumentDialog()"
+      >
+        Создать документ
+      </v-btn>
+    </div>
+
+    <template v-if="openedDocuments.length" >
+      <div style="font-size: 40px;">Доступные вам документы:</div>
+      <div class="documents-card-wrapper">
+        <DocumentCard 
+          v-for="document in openedDocuments"
+          :title="document.title" 
+          :owner="document.owner" 
+          :creationDate="document.dt_created"
+          @click="openDocument(document.id)"
+        />
+      </div>
+    </template>
   </v-card>
 
   <NewDocumentDialog v-model="isNewDocumentDialogOpen" />
@@ -59,14 +89,8 @@ export default {
   data() {
     return {
       isNewDocumentDialogOpen: false,
-      documents: [
-        {
-          id: 1,
-          title: 'Не прошёл запрос получается',
-          owner: 'чел',
-          dt_created: '2026-04-08T17:38:55.229Z',
-        },
-    ],
+      createdDocuments: [],
+      openedDocuments: [],
     }
   },
 
@@ -77,7 +101,9 @@ export default {
 
   async created() {
     try {
-      this.documents = await this.fetchDocuments()
+      const documents = await this.fetchDocuments()
+      this.createdDocuments = documents.owner_documents
+      this.openedDocuments = documents.opened_documents
     } catch (error) {
       console.error(error)
 
