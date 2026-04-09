@@ -1,5 +1,5 @@
 <template>
-  <div class="mb-5">
+  <div class="mb-5 page-header">
     <v-btn
       elevation="0"
       color="#FF8C00"
@@ -7,6 +7,18 @@
     >
       Главная страница
     </v-btn>
+
+    <div>
+      <span 
+        style="font-size: 20px;"
+        class="mr-2"
+      >{{ user.userName }}</span>
+
+      <v-btn 
+        variant="plain"
+        @click="logout"
+      >Выйти</v-btn>
+    </div>
   </div>
 
   <div class="wrapper">
@@ -56,6 +68,7 @@ import * as Y from 'yjs'
 import { WebsocketProvider } from 'y-websocket'
 import { useRouter, useRoute } from 'vue-router'
 import { useDocumentStore } from '@/stores/document'
+import { useUserStore } from '@/stores/user';
 
 const USER_COLORS = ['#F98181', '#FBBC88', '#FAF594', '#70CFF8', '#94FADB', '#B9F18D']
 const randomColor = () => USER_COLORS[Math.floor(Math.random() * USER_COLORS.length)]
@@ -65,6 +78,7 @@ const ydoc = new Y.Doc()
 const router = useRouter()
 const route = useRoute()
 const document = useDocumentStore();
+const user = useUserStore();
 
 const provider = new WebsocketProvider('ws://localhost:1234', 'my-document-room', ydoc)
 
@@ -121,6 +135,10 @@ onBeforeUnmount(() => {
 </script>
 
 <style scoped>
+.page-header {
+  display: flex;
+  justify-content: space-between;
+}
 .wrapper {
   max-width: 95vw;
   flex: 1;
