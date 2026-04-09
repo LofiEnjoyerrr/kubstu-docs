@@ -83,18 +83,21 @@ const user = useUserStore();
 const status = ref('connecting')
 const users  = ref([])
 const documentObj = ref({})
+const isSettingContent = ref(false)
 
 const backToMainPage = () => {
   router.push('/');
 }
 
-  const ws = new WebSocket(`ws://localhost:8000/ws/docs/${route.params.id}`)
+  const ws = new WebSocket(`ws://localhost:8000/ws/docs/${route.params.id}/`)
 
   ws.onmessage = function(e) {
     const data = JSON.parse(e.data);
 
     if (data.type === 'edit') {
+      isSettingContent.value = true
       editor.value.commands.setContent(data.delta)
+      isSettingContent.value = false
     }
   }
 
@@ -113,10 +116,12 @@ const editor = useEditor({
     },
 
     onUpdate({ editor }) {
+      if (isSettingContent.value) return
+      
       if (ws.readyState === WebSocket.OPEN) {
         ws.send(JSON.stringify({
           type: 'edit',
-          delta: editor.state.content,
+          delta: editor.getHTML(),
         }))
       }
     },
@@ -124,7 +129,9 @@ const editor = useEditor({
 
 onMounted(async () => {
   try {
+    isSettingContent.value = true
     documentObj.value = await document.fetchDocument(route.params.id)
+    isSettingContent.value = false
   } catch (error) {
     console.error(error)
 
