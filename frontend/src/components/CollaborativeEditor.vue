@@ -88,7 +88,7 @@ const backToMainPage = () => {
   router.push('/');
 }
 
-  const ws = new WebSocket(`ws://localhost:8000/ws/docs/${route.params.id}`)
+  const ws = new WebSocket(`ws://localhost:8000/ws/docs/${route.params.id}/`)
 
   ws.onmessage = function(e) {
     const data = JSON.parse(e.data);
