@@ -5,11 +5,12 @@ from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
+from docs.models import Document
 from docs.serializers import GetDocumentSerializer, PostDocumentSerializer
 from docs.selectors import get_user_documents, get_available_documents, get_user_opened_documents
 
 
-class MeDocumentsListCreateAPIView(APIView):
+class MeDocumentsCreateAPIView(APIView):
     get_serializer_class = GetDocumentSerializer
     post_serializer_class = PostDocumentSerializer
     permission_classes = [IsAuthenticated]
@@ -49,4 +50,4 @@ class DocumentsRetrieveAPIView(RetrieveAPIView):
     permission_classes = [IsAuthenticated]
 
     def get_queryset(self):
-        return get_available_documents(self.request.user).select_related('owner')
+        return Document.objects.all().select_related('owner')
