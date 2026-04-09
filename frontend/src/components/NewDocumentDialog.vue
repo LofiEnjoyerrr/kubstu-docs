@@ -60,7 +60,7 @@
     }
 </script>
 
-<style>
+<style scoped>
     .button-row {
         display: flex;
         flex-direction: row-reverse;
