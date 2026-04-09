@@ -9,8 +9,8 @@ from realtime.routing import websocket_urlpatterns
 os.environ.setdefault('DJANGO_SETTINGS_MODULE', 'config.settings')
 
 application = ProtocolTypeRouter({
-    "http": get_asgi_application(),
-    "websocket": AuthMiddlewareStack(
+    'http': get_asgi_application(),
+    'websocket': AuthMiddlewareStack(
         URLRouter(websocket_urlpatterns)
     ),
 })
