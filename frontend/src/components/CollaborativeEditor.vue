@@ -83,11 +83,20 @@ const user = useUserStore();
 const status = ref('connecting')
 const users  = ref([])
 const documentObj = ref({})
-const ws = ref({})
 
 const backToMainPage = () => {
   router.push('/');
 }
+
+  const ws = new WebSocket(`ws://localhost:8000/ws/docs/${route.params.id}`)
+
+  ws.onmessage = function(e) {
+    const data = JSON.parse(e.data);
+
+    if (data.type === 'edit') {
+      editor.value.commands.setContent(data.delta)
+    }
+  }
 
 const editor = useEditor({
     extensions: [
@@ -104,8 +113,8 @@ const editor = useEditor({
     },
 
     onUpdate({ editor }) {
-      if (ws.value.readyState === WebSocket.OPEN) {
-        ws.value.send(JSON.stringify({
+      if (ws.readyState === WebSocket.OPEN) {
+        ws.send(JSON.stringify({
           type: 'edit',
           delta: editor.state.content,
         }))
@@ -124,16 +133,6 @@ onMounted(async () => {
     return
   }
 
-  ws.value = new WebSocket(`ws://localhost:8000/ws/docs/${documentObj.value.id}`)
-
-  ws.value.onmessage = function(e) {
-    const data = JSON.parse(e.data);
-
-    if (data.type === 'edit') {
-      editor.value.commands.setContent(data.delta)
-    }
-  }
-  
 
   if (documentObj.value.content) {
     editor.value.commands.setContent(documentObj.value.content)
