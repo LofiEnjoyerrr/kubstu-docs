@@ -1,18 +1,30 @@
 import json
 from channels.generic.websocket import AsyncWebsocketConsumer
 
-class DocumentConsumer(AsyncWebsocketConsumer):
+import json
+from channels.generic.websocket import AsyncWebsocketConsumer
+from channels.db import database_sync_to_async
+from docs.models import Document
 
+class DocumentConsumer(AsyncWebsocketConsumer):
     async def connect(self):
         self.doc_id = self.scope["url_route"]["kwargs"]["doc_id"]
         self.group_name = f"doc_{self.doc_id}"
 
+        # Добавляем пользователя в группу
         await self.channel_layer.group_add(
             self.group_name,
             self.channel_name
         )
 
         await self.accept()
+
+        # Отправляем текущее состояние документа
+        content = await self.get_document_content(self.doc_id)
+        await self.send(text_data=json.dumps({
+            "type": "init",
+            "content": content
+        }))
 
     async def disconnect(self, close_code):
         await self.channel_layer.group_discard(
@@ -22,19 +34,25 @@ class DocumentConsumer(AsyncWebsocketConsumer):
 
     async def receive(self, text_data):
         data = json.loads(text_data)
-
         event_type = data.get("type")
 
         if event_type == "edit":
             await self.handle_edit(data)
 
     async def handle_edit(self, data):
+        delta = data.get("delta")
+        user = self.scope["user"].username if self.scope["user"].is_authenticated else "anon"
+
+        # Обновляем документ в базе
+        await self.update_document(self.doc_id, delta)
+
+        # Рассылаем изменения группе
         await self.channel_layer.group_send(
             self.group_name,
             {
                 "type": "broadcast_edit",
-                "user": self.scope["user"].username if self.scope["user"].is_authenticated else "anon",
-                "delta": data["delta"],
+                "user": user,
+                "delta": delta,
             }
         )
 
@@ -44,3 +62,15 @@ class DocumentConsumer(AsyncWebsocketConsumer):
             "user": event["user"],
             "delta": event["delta"],
         }))
+
+    @database_sync_to_async
+    def get_document_content(self, doc_id):
+        doc = Document.objects.get(pk=doc_id)
+        return doc.content
+
+    @database_sync_to_async
+    def update_document(self, doc_id, delta):
+        # В простейшем случае delta – это просто новый текст
+        doc = Document.objects.get(pk=doc_id)
+        doc.content = delta
+        doc.save()
