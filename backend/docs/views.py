@@ -19,13 +19,9 @@ class MeDocumentsListCreateAPIView(APIView):
         responses=GetDocumentSerializer(),
     )
     def post(self, request, *args, **kwargs):
-        data = {
-            **request.data,
-            'owner': self.request.user.id
-        }
-        serializer = self.post_serializer_class(data=data)
+        serializer = self.post_serializer_class(data=request.data)
         serializer.is_valid(raise_exception=True)
-        document = serializer.save()
+        document = serializer.save(owner=request.user)
         return Response(
             self.get_serializer_class(instance=document).data,
             status=status.HTTP_201_CREATED,
