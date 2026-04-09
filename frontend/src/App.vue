@@ -1,10 +1,28 @@
-<script setup>
-import { RouterView } from 'vue-router'
-</script>
-
 <template>
   <RouterView />
 </template>
+
+<script>
+import { RouterView } from 'vue-router'
+import { useUserStore } from './stores/user';
+import { mapStores } from 'pinia'
+
+export default {
+  computed: {
+    ...mapStores(useUserStore),
+  },
+
+  created() {
+    const localUserName = localStorage.getItem('username')
+
+    console.log(localUserName)
+
+    if (localUserName) {
+      this.userStore.setUserName(localUserName)
+    }
+  }
+}
+</script>
 
 <style scoped>
 header {

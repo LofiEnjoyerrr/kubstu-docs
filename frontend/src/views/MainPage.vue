@@ -1,5 +1,5 @@
 <template>
-  <div class="mb-5">
+  <div class="mb-5 header">
     <v-btn
       append-icon="mdi-plus"
       elevation="0"
@@ -8,6 +8,18 @@
     >
       Создать документ
     </v-btn>
+
+    <div>
+      <span 
+        style="font-size: 20px;"
+        class="mr-2"
+      >{{ userName }}</span>
+
+      <v-btn 
+        variant="plain"
+        @click="logout"
+      >Выйти</v-btn>
+    </div>
   </div>
 
   <v-card
@@ -33,6 +45,8 @@ import NewDocumentDialog from '@/components/NewDocumentDialog.vue';
 import { mapStores, mapActions } from 'pinia'
 import DocumentCard from '@/components/DocumentCard.vue';
 import { useDocumentStore } from '@/stores/document';
+import { useUserStore } from '@/stores/user';
+import { mapState } from 'pinia'
 
 export default {
   name: 'MainPage',
@@ -58,6 +72,7 @@ export default {
 
   computed: {
     ...mapStores(useDocumentStore),
+    ...mapState(useUserStore, ['userName']),
   },
 
   async created() {
@@ -78,13 +93,14 @@ export default {
       this.$router.push(`/doc/${id}`);
     },
     ...mapActions(useDocumentStore, ['fetchDocuments']),
+    ...mapActions(useUserStore, ['logout']),
   },
 }
 
 
 </script>
 
-<style>
+<style scoped>
   .main-card {
     flex: 1;
   }
@@ -92,5 +108,9 @@ export default {
     display: flex;
     gap: 16px;
     flex-wrap: wrap;
+  }
+  .header {
+    display: flex;
+    justify-content: space-between;
   }
 </style>

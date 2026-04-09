@@ -4,7 +4,7 @@ import api from '@/axios'
 export const useDocumentStore = defineStore('document', {
   actions: {
     async createDocument(title) {
-      const data = await api.post('/api/docs/me/', {
+      const { data } = await api.post('/api/docs/me/', {
         title: title,
       })
 
@@ -12,13 +12,13 @@ export const useDocumentStore = defineStore('document', {
     },
 
     async fetchDocuments() {
-      const data = await api.get('/api/docs/available/')
+      const { data } = await api.get('/api/docs/available/')
 
       return data;
     },
 
     async fetchDocument(id) {
-      const data = await api.get(`/api/docs/${id}/`)
+      const { data } = await api.get(`/api/docs/${id}/`)
 
       return data;
     },
