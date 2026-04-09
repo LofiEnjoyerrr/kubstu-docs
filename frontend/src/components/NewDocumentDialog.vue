@@ -53,8 +53,16 @@
         methods: {
             ...mapActions(useDocumentStore, ['createDocument']),
 
-            onClickCreateDocument() {
-                this.createDocument(this.documentTitle);
+            async onClickCreateDocument() {
+                let document;
+
+                try {
+                    document = await this.createDocument(this.documentTitle);
+                } catch (error) {
+                    console.error(error)
+                }
+
+                this.$router.push(`/doc/${document.id}`)
             }
         },
     }

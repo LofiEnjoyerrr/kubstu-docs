@@ -23,7 +23,7 @@
 
   <div class="wrapper">
     <div class="header">
-      <span class="title">Название документа</span>
+      <span class="title">{{ documentObj.title }}</span>
       <span class="badge" :class="status === 'connected' ? 'online' : 'connecting'">
         {{ status === 'connected' ? '' : 'Подключаемся…' }}
       </span>
@@ -80,41 +80,42 @@ const route = useRoute()
 const document = useDocumentStore();
 const user = useUserStore();
 
-const provider = new WebsocketProvider('ws://localhost:1234', 'my-document-room', ydoc)
-
 const status = ref('connecting')
 const users  = ref([])
-
-provider.on('status', ({ status: s }) => { status.value = s })
-provider.awareness.on('change', () => {
-    users.value = [...provider.awareness.getStates().values()]
-      .map(s => s.user)
-      .filter(Boolean)
-  })
-const editor = useEditor({
-  extensions: [
-    StarterKit.configure({ history: false }),
-    Collaboration.configure({ document: ydoc }),
-  ],
-
-  onSelectionUpdate({ editor }) {
-    const { from, to } = editor.state.selection
-
-    console.log('Позиция каретки:', from)
-    console.log('Выделено от/до:', from, to)
-    console.log('Есть выделение:', from !== to)
-  },
-})
+const documentObj = ref({})
+const ws = ref({})
 
 const backToMainPage = () => {
   router.push('/');
 }
 
-onMounted(async () => {
-  let documentObj;
+const editor = useEditor({
+    extensions: [
+      StarterKit.configure({ history: false }),
+      Collaboration.configure({ document: ydoc }),
+    ],
 
+    onSelectionUpdate({ editor }) {
+      const { from, to } = editor.state.selection
+
+      console.log('Позиция каретки:', from)
+      console.log('Выделено от/до:', from, to)
+      console.log('Есть выделение:', from !== to)
+    },
+
+    onUpdate({ editor }) {
+      if (ws.value.readyState === WebSocket.OPEN) {
+        ws.value.send(JSON.stringify({
+          type: 'edit',
+          delta: editor.state.content,
+        }))
+      }
+    },
+  })
+
+onMounted(async () => {
   try {
-    documentObj = await document.fetchDocument(route.params.id)
+    documentObj.value = await document.fetchDocument(route.params.id)
   } catch (error) {
     console.error(error)
 
@@ -123,8 +124,19 @@ onMounted(async () => {
     return
   }
 
-  if (documentObj.content) {
-    editor.value.commands.setContent(documentObj.content)
+  ws.value = new WebSocket(`ws://localhost:8000/ws/docs/${documentObj.value.id}`)
+
+  ws.value.onmessage = function(e) {
+    const data = JSON.parse(e.data);
+
+    if (data.type === 'edit') {
+      editor.value.commands.setContent(data.delta)
+    }
+  }
+  
+
+  if (documentObj.value.content) {
+    editor.value.commands.setContent(documentObj.value.content)
   } 
 })
 
