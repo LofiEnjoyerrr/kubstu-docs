@@ -41,22 +41,27 @@ class DocumentConsumer(AsyncWebsocketConsumer):
 
     async def handle_edit(self, data):
         delta = data.get("delta")
-        user = self.scope["user"].username if self.scope["user"].is_authenticated else "anon"
+        if delta is None:
+            return
 
-        # Обновляем документ в базе
+        user = self.scope["user"].username if self.scope["user"].is_authenticated else "anon"
         await self.update_document(self.doc_id, delta)
 
-        # Рассылаем изменения группе
         await self.channel_layer.group_send(
             self.group_name,
             {
                 "type": "broadcast_edit",
                 "user": user,
                 "delta": delta,
+                "sender_channel": self.channel_name,  # ← добавляем отправителя
             }
         )
 
     async def broadcast_edit(self, event):
+        # Не отправляем обратно тому кто прислал
+        if event.get("sender_channel") == self.channel_name:
+            return
+
         await self.send(text_data=json.dumps({
             "type": "edit",
             "user": event["user"],
@@ -64,13 +69,18 @@ class DocumentConsumer(AsyncWebsocketConsumer):
         }))
 
     @database_sync_to_async
-    def get_document_content(self, doc_id):
+    def update_document(self, doc_id, delta):
+        if delta is None:
+            return
         doc = Document.objects.get(pk=doc_id)
-        return doc.content
+        doc.content = json.dumps(delta) if isinstance(delta, dict) else delta
+        doc.save(update_fields=['content'])
 
     @database_sync_to_async
-    def update_document(self, doc_id, delta):
-        # В простейшем случае delta – это просто новый текст
+    def get_document_content(self, doc_id):
         doc = Document.objects.get(pk=doc_id)
-        doc.content = delta
-        doc.save()
+        # Пытаемся вернуть как dict (TipTap JSON), иначе как строку
+        try:
+            return json.loads(doc.content) if doc.content else {}
+        except (json.JSONDecodeError, TypeError):
+            return doc.content or {}
