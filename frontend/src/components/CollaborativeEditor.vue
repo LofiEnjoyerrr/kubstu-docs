@@ -148,7 +148,6 @@ onMounted(async () => {
 
 onBeforeUnmount(() => {
   editor.value?.destroy()
-  provider.destroy()
 })
 </script>
 
