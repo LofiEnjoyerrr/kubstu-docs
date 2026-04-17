@@ -25,6 +25,7 @@
                     label="Пароль"
                     variant="outlined"
                     density="compact"
+                    type="password"
                 />
             </v-form>
 
@@ -76,6 +77,7 @@
                     label="Пароль"
                     variant="outlined"
                     density="compact"
+                    type="password"
                 />
             </v-form>
 
