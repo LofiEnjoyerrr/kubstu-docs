@@ -24,9 +24,6 @@
   <div class="wrapper">
     <div class="header">
       <span class="title">{{ documentObj.title }}</span>
-      <span class="badge" :class="status === 'connected' ? 'online' : 'connecting'">
-        {{ status === 'connected' ? '' : 'Подключаемся…' }}
-      </span>
       <div class="avatars">
         <div
           v-for="(user, i) in users" :key="i"
