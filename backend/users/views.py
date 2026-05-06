@@ -15,15 +15,11 @@ class LoginView(APIView):
     @extend_schema(
         request=LoginSerializer(),
         responses={
-            200: OpenApiResponse(
-                description="Успешный вход",
-                response={
-                    "type": "object",
-                    "properties": {
-                        "message": {"type": "string"},
-                        "user": {"type": "string"},
-                    }
-                }
+            status.HTTP_200_OK: OpenApiResponse(
+                description='Успешный вход',
+            ),
+            status.HTTP_400_BAD_REQUEST: OpenApiResponse(
+                description='Неверные данные',
             )
         }
     )
@@ -34,10 +30,7 @@ class LoginView(APIView):
         user = serializer.validated_data['user']
         login(request, user)
 
-        return Response({
-            'message': 'Logged in',
-            'user': user.username
-        })
+        return Response(status=status.HTTP_200_OK)
 
 
 class LogoutView(APIView):
@@ -46,20 +39,15 @@ class LogoutView(APIView):
     @extend_schema(
         request=LoginSerializer(),
         responses={
-            200: OpenApiResponse(
-                description="Успешный вход",
-                response={
-                    "type": "object",
-                    "properties": {
-                        "message": {"type": "string"},
-                    }
-                }
-            )
+            status.HTTP_200_OK: OpenApiResponse(
+                description='Успешный выход',
+            ),
         }
     )
     def post(self, request):
         logout(request)
-        return Response({'message': 'Logged out'})
+
+        return Response(status=status.HTTP_200_OK)
 
 
 class RegisterView(APIView):
