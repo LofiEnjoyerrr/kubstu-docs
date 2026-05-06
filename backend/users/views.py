@@ -10,7 +10,7 @@ from users.serializers.response import UserSerializer
 from users.throttling import LoginRateThrottle
 
 
-class LoginView(APIView):
+class LoginAPIView(APIView):
     permission_classes = [AllowAny]
     throttle_classes = [LoginRateThrottle]
     throttle_scope = 'users_login_scope'
@@ -39,7 +39,7 @@ class LoginView(APIView):
         return Response(status=status.HTTP_200_OK)
 
 
-class LogoutView(APIView):
+class LogoutAPIView(APIView):
     permission_classes = [IsAuthenticated]
 
     @extend_schema(
@@ -56,7 +56,7 @@ class LogoutView(APIView):
         return Response(status=status.HTTP_200_OK)
 
 
-class RegisterView(APIView):
+class RegisterAPIView(APIView):
     permission_classes = [AllowAny]
 
     @extend_schema(

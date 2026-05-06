@@ -1,3 +1,8 @@
 1. Добавить подтверждение почты через email
-3. Форматирование, линтеры, докстринги, типизация, help_text в serializers
+2. АПИ для поиска юзеров по никнейму
+
+
 4. Поработать над ALLOWED_HOSTS, INTERNAL_IPS, CSRF_TRUSTED_ORIGINS, CORS_ALLOW_ALL_ORIGINS, CORS_ALLOW_CREDENTIALS
+
+
+3. Форматирование, линтеры, докстринги, типизация, help_text в serializers
