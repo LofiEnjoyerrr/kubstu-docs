@@ -113,6 +113,9 @@ REST_FRAMEWORK = {
         'rest_framework.authentication.SessionAuthentication',
     ],
     'DEFAULT_SCHEMA_CLASS': 'drf_spectacular.openapi.AutoSchema',
+    'DEFAULT_THROTTLE_RATES': {
+        'users_login_scope': '3/5m',
+    }
 }
 
 SPECTACULAR_SETTINGS = {

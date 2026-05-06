@@ -7,10 +7,13 @@ from rest_framework.permissions import AllowAny, IsAuthenticated
 
 from users.serializers.request import LoginSerializer, RegisterSerializer
 from users.serializers.response import UserSerializer
+from users.throttling import LoginRateThrottle
 
 
 class LoginView(APIView):
     permission_classes = [AllowAny]
+    throttle_classes = [LoginRateThrottle]
+    throttle_scope = 'users_login_scope'
 
     @extend_schema(
         request=LoginSerializer(),
@@ -20,7 +23,10 @@ class LoginView(APIView):
             ),
             status.HTTP_400_BAD_REQUEST: OpenApiResponse(
                 description='Неверные данные',
-            )
+            ),
+            status.HTTP_429_TOO_MANY_REQUESTS: OpenApiResponse(
+                description='Слишком много запросов',
+            ),
         }
     )
     def post(self, request):
@@ -60,5 +66,7 @@ class RegisterView(APIView):
     def post(self, request):
         serializer = RegisterSerializer(data=request.data)
         serializer.is_valid(raise_exception=True)
+
         created_user = serializer.save()
+
         return Response(data=UserSerializer(created_user).data, status=status.HTTP_201_CREATED)
