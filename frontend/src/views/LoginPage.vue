@@ -72,6 +72,18 @@
                 />
 
                 <v-text-field
+                    v-model="email"
+                    :rules="[
+                        (value) => value.length ? true : 'Обязательное поле',
+                        (value) => /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value) || 'Неверный формат электронной почты',
+                    ]"
+                    class="mb-8"
+                    label="Электронная почта"
+                    variant="outlined"
+                    density="compact"
+                />
+
+                <v-text-field
                     v-model="password"
                     :rules="[(value) => value.length ? true : 'Обязательное поле']"
                     label="Пароль"
@@ -121,6 +133,7 @@
             return {
                 isLogin: true,
                 userName: '',
+                email: '',
                 password: '',
             }
         },
@@ -150,7 +163,7 @@
                 }
 
                 try {
-                    await this.userStore.register(this.userName, this.password);
+                    await this.userStore.register(this.userName, this.password, this.email);
                 } catch (error) {
                     console.error(error)
 

@@ -20,7 +20,8 @@ export const useUserStore = defineStore('user', {
                 password: password,
             })
 
-            const color = !!data.color ? data.color : '#FF28A3'
+            const randomColor = '#' + Math.floor(Math.random() * 0xFFFFFF).toString(16).padStart(6, '0')
+            const color = !!data.color ? data.color : randomColor
 
             this.userName = data.user;
             this.userColor = color
