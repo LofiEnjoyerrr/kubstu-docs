@@ -1,24 +1,42 @@
 <template>
   <div class="mb-5 page-header">
-    <v-btn
-      elevation="0"
-      color="#FF8C00"
-      @click="backToMainPage()"
-    >
-      Главная страница
-    </v-btn>
-
     <div>
-      <span 
-        style="font-size: 20px;"
+      <v-btn
         class="mr-2"
-      >{{ user.userName }}</span>
+        elevation="0"
+        color="#FF8C00"
+        @click="backToMainPage()"
+      >
+        Главная страница
+      </v-btn>
 
-      <v-btn 
-        variant="plain"
-        @click="user.logout"
-      >Выйти</v-btn>
+      <v-menu>
+        <template #activator="{props}">
+          <v-btn
+            append-icon="mdi-export"
+            elevation="0"
+            color="#FF8C00"
+            v-bind="props"
+          >
+            Экспортировать документ
+          </v-btn>
+        </template>
+
+        <v-list>
+          <v-list-item
+            v-for="(exportOption, index) in EXPORT_OPTIONS"
+            :key="index"
+            :value="index"
+            @click="onClickExport(exportOption)"
+          >
+            <v-list-item-title>.{{ exportOption }}</v-list-item-title>
+          </v-list-item>
+        </v-list>
+      </v-menu>
     </div>
+
+
+    <UserInfo />
   </div>
 
   <div class="wrapper">
@@ -61,6 +79,7 @@ import { ref, onMounted, onBeforeUnmount } from 'vue'
 import { useEditor, EditorContent } from '@tiptap/vue-3'
 import StarterKit from '@tiptap/starter-kit'
 import Collaboration from '@tiptap/extension-collaboration'
+import UserInfo from '@/components/UserInfo.vue';
 import * as Y from 'yjs'
 import { WebsocketProvider } from 'y-websocket'
 import { useRouter, useRoute } from 'vue-router'
@@ -68,6 +87,7 @@ import { useDocumentStore } from '@/stores/document'
 import { useUserStore } from '@/stores/user';
 
 const USER_COLORS = ['#F98181', '#FBBC88', '#FAF594', '#70CFF8', '#94FADB', '#B9F18D']
+const EXPORT_OPTIONS = ['docx', 'txt']
 const randomColor = () => USER_COLORS[Math.floor(Math.random() * USER_COLORS.length)]
 const randomName  = () => `User ${Math.floor(Math.random() * 1000)}`
 
@@ -84,6 +104,24 @@ const isSettingContent = ref(false)
 
 const backToMainPage = () => {
   router.push('/');
+}
+
+const onClickExport = async (value) => {
+  try {
+    const file = await document.exportDocument({
+      id: route.params.id,
+      extention: value,
+    })
+
+    const url = URL.createObjectURL(file)
+    const a = document.createElement('a')
+    a.href = url
+    a.download = `${documentObj.title}.${value}`
+    a.click()
+    URL.revokeObjectURL(url)
+  } catch (error) {
+    console.error(error)
+  }
 }
 
   const ws = new WebSocket(`ws://localhost:8000/ws/docs/${route.params.id}/`)

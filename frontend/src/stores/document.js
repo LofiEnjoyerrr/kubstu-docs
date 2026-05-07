@@ -22,5 +22,17 @@ export const useDocumentStore = defineStore('document', {
 
       return data;
     },
+
+    async importDocument(document) {
+      const { data } = await api.post('/api/docs/import/', document)
+
+      return data
+    },
+
+    async exportDocument({ id, extention }) {
+      const { data } = await api.post(`/api/docs/export/${id}`, extention)
+
+      return data
+    },
   },
 })

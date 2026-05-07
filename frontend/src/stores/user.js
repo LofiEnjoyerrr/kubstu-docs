@@ -2,10 +2,16 @@ import { defineStore } from 'pinia'
 import api from '@/axios'
 
 export const useUserStore = defineStore('user', {
-    state: () => ({ userName: '' }),
+    state: () => ({ 
+        userName: '',
+        userColor: '',
+    }),
     actions: {
         setUserName(username) {
             this.userName = username;
+        },
+        setUserColor(usercolor) {
+            this.userColor = usercolor;
         },
 
         async login(username, password) {
@@ -14,11 +20,13 @@ export const useUserStore = defineStore('user', {
                 password: password,
             })
 
-            console.log(data)
+            const color = !!data.color ? data.color : '#FF28A3'
 
             this.userName = data.user;
+            this.userColor = color
 
             localStorage.setItem('username', data.user);
+            localStorage.setItem('usercolor', color);
         },
 
         async register(username, password, email) {
@@ -35,6 +43,7 @@ export const useUserStore = defineStore('user', {
             await api.post('/api/users/logout/')
 
             await localStorage.setItem('username', '');
+            await localStorage.setItem('usercolor', '');
 
             location.reload()
         },

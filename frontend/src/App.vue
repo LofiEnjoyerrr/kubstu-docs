@@ -14,11 +14,14 @@ export default {
 
   created() {
     const localUserName = localStorage.getItem('username')
-
-    console.log(localUserName)
+    const localUserColor = localStorage.getItem('usercolor')
 
     if (localUserName) {
       this.userStore.setUserName(localUserName)
+    }
+
+    if (localUserColor) {
+      this.userStore.setUserColor(localUserColor)
     }
   }
 }

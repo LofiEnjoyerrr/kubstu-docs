@@ -1,25 +1,36 @@
 <template>
   <div class="mb-5 header">
-    <v-btn
-      append-icon="mdi-plus"
-      elevation="0"
-      color="#FF8C00"
-      @click="openNewDocumentDialog()"
-    >
-      Создать документ
-    </v-btn>
-
     <div>
-      <span 
-        style="font-size: 20px;"
+      <v-btn
         class="mr-2"
-      >{{ userName }}</span>
+        append-icon="mdi-plus"
+        elevation="0"
+        color="#FF8C00"
+        @click="openNewDocumentDialog()"
+      >
+        Создать документ
+      </v-btn>
 
-      <v-btn 
-        variant="plain"
-        @click="logout"
-      >Выйти</v-btn>
+
+      <input
+        ref="fileInput"
+        type="file"
+        accept=".docx,.txt"
+        style="display: none"
+        @change="onClickUpload"
+      />
+
+      <v-btn
+        append-icon="mdi-import"
+        elevation="0"
+        color="#FF8C00"
+        @click="$refs.fileInput.click()"
+      >
+        Импортировать документ
+      </v-btn>
     </div>
+    
+    <UserInfo />
   </div>
 
   <v-card
@@ -74,6 +85,7 @@
 import NewDocumentDialog from '@/components/NewDocumentDialog.vue';
 import { mapStores, mapActions } from 'pinia'
 import DocumentCard from '@/components/DocumentCard.vue';
+import UserInfo from '@/components/UserInfo.vue';
 import { useDocumentStore } from '@/stores/document';
 import { useUserStore } from '@/stores/user';
 import { mapState } from 'pinia'
@@ -84,6 +96,7 @@ export default {
   components: {
     NewDocumentDialog,
     DocumentCard,
+    UserInfo,
   },
 
   data() {
@@ -118,7 +131,24 @@ export default {
     openDocument(id) {
       this.$router.push(`/doc/${id}`);
     },
-    ...mapActions(useDocumentStore, ['fetchDocuments']),
+    async onClickUpload(event) {
+      const file = event.target.files[0]
+      if (!file) return
+
+      const formData = new FormData()
+      formData.append('file', file)
+
+      try {
+        const id = await this.importDocument(formData)
+
+        this.openDocument(id)
+      } catch (error) {
+        console.error('Ошибка загрузки:', error)
+      } finally {
+        event.target.value = ''
+      }
+    },
+    ...mapActions(useDocumentStore, ['fetchDocuments', 'importDocument']),
     ...mapActions(useUserStore, ['logout']),
   },
 }
