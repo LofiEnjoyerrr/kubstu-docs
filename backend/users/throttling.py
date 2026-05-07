@@ -1,7 +1,7 @@
 from rest_framework.throttling import ScopedRateThrottle
 
 
-class LoginRateThrottle(ScopedRateThrottle):
+class ExtendedRateThrottle(ScopedRateThrottle):
     def parse_rate(self, rate):
         num, period = rate.split('/')
         num_requests = int(num)

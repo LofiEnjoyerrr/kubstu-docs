@@ -33,9 +33,9 @@ class User(AbstractUser, AutoDateMixin):
 
 class RegisterRequest(AutoDateMixin):
     email = models.EmailField()
-    username = models.CharField(max_length=150, blank=True, default='', validators=[UnicodeUsernameValidator()])
+    username = models.CharField(max_length=150, validators=[UnicodeUsernameValidator()])
     password = models.CharField(max_length=128)
 
     ip = models.GenericIPAddressField()
 
-    token_hash = models.CharField(max_length=64)
+    token_hash = models.CharField(max_length=128)

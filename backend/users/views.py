@@ -6,15 +6,17 @@ from rest_framework.views import APIView
 from rest_framework.response import Response
 from rest_framework.permissions import AllowAny, IsAuthenticated
 
+from common_utils.ip import get_client_ip
+from users.constants import EMAIL_VERIFY_REQUEST_MESSAGE, EMAIL_VERIFY_REQUEST_LIFETIME
 from users.serializers.request import LoginSerializer, RegisterSerializer
 from users.serializers.response import UserSerializer
 from users.services import validate_credentials
-from users.throttling import LoginRateThrottle
+from users.throttling import ExtendedRateThrottle
 
 
 class LoginAPIView(APIView):
     permission_classes = [AllowAny]
-    throttle_classes = [LoginRateThrottle]
+    throttle_classes = [ExtendedRateThrottle]
     throttle_scope = 'users_login_scope'
 
     @extend_schema(
@@ -82,15 +84,21 @@ class CredentialAvailableAPIView(APIView):
 
 class RegisterAPIView(APIView):
     permission_classes = [AllowAny]
+    throttle_classes = [ExtendedRateThrottle]
+    throttle_scope = 'users_register_scope'
 
     @extend_schema(
         request=RegisterSerializer(),
         responses=UserSerializer(),
     )
     def post(self, request):
-        serializer = RegisterSerializer(data=request.data)
+        user_ip = get_client_ip(request)
+        serializer = RegisterSerializer(data=request.data | {'ip': user_ip})
         serializer.is_valid(raise_exception=True)
 
-        created_user = serializer.save()
+        serializer.save()
 
-        return Response(data=UserSerializer(created_user).data, status=status.HTTP_201_CREATED)
+        return Response(
+            data=EMAIL_VERIFY_REQUEST_MESSAGE.format(EMAIL_VERIFY_REQUEST_LIFETIME),
+            status=status.HTTP_201_CREATED,
+        )

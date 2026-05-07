@@ -9,12 +9,12 @@ urlpatterns = [
         'credentials/username/<str:credential>/available/',
         CredentialAvailableAPIView.as_view(),
         kwargs={'credential_type': 'username'},
-        name='users_credential_available',
+        name='users_credential_username_available',
     ),
     path(
         'credentials/email/<str:credential>/available/',
         CredentialAvailableAPIView.as_view(),
         kwargs={'credential_type': 'email'},
-        name='users_credential_available',
+        name='users_credential_email_available',
     ),
 ]
