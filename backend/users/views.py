@@ -1,4 +1,5 @@
 from django.contrib.auth import login, logout
+from django.http import Http404, HttpResponseNotFound
 from drf_spectacular.utils import OpenApiResponse, extend_schema
 from rest_framework import status
 from rest_framework.views import APIView
@@ -7,6 +8,7 @@ from rest_framework.permissions import AllowAny, IsAuthenticated
 
 from users.serializers.request import LoginSerializer, RegisterSerializer
 from users.serializers.response import UserSerializer
+from users.services import validate_credentials
 from users.throttling import LoginRateThrottle
 
 
@@ -52,6 +54,28 @@ class LogoutAPIView(APIView):
     )
     def post(self, request):
         logout(request)
+
+        return Response(status=status.HTTP_200_OK)
+
+
+class CredentialAvailableAPIView(APIView):
+    permission_classes = [AllowAny]
+
+    @extend_schema(
+        request=None,
+        responses={
+            status.HTTP_200_OK: OpenApiResponse(
+                description='Учётные данные доступны',
+            ),
+            status.HTTP_400_BAD_REQUEST: OpenApiResponse(
+                description='Учётные данные не доступны',
+            ),
+        }
+    )
+    def get(self, request, credential_type, credential):
+        credential_is_valid = validate_credentials(credential_type, credential)
+        if not credential_is_valid:
+            return Response(status=status.HTTP_400_BAD_REQUEST)
 
         return Response(status=status.HTTP_200_OK)
 

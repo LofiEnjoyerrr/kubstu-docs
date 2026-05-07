@@ -21,7 +21,14 @@ class LoginSerializer(serializers.Serializer):
         return data
 
 
+class CredentialsAvailableSerializer(serializers.Serializer):
+    username = serializers.CharField()
+    email = serializers.CharField()
+
+
 class RegisterSerializer(serializers.ModelSerializer):
+
+    email = serializers.EmailField(max_length=254)
 
     class Meta:
         model = User
