@@ -71,9 +71,9 @@ class RegisterSerializer(serializers.ModelSerializer):
         password = validated_data.pop('password')
         password = make_password(password)
 
-        token_hash = make_password(generate_email_verify_token())
+        token = generate_email_verify_token()
 
-        register_request = RegisterRequest(**validated_data, password=password, token_hash=token_hash)
+        register_request = RegisterRequest(**validated_data, password=password, token=token)
         register_request.save()
         register_request.send_email_verify()
 

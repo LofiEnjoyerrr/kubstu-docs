@@ -4,6 +4,7 @@ from django.db import models
 
 from common_utils.orm.mixins import AutoDateMixin
 from common_utils.utils import generate_random_color
+from users.constants import EMAIL_VERIFY_TOKEN_LENGTH
 from users.tasks import send_email_verify
 
 
@@ -50,7 +51,7 @@ class RegisterRequest(AutoDateMixin):
         db_default=RegisterRequestStatus.WAIT,
     )
 
-    token_hash = models.CharField(max_length=128)
+    token = models.CharField(max_length=EMAIL_VERIFY_TOKEN_LENGTH)
 
     def send_email_verify(self):
-        send_email_verify.delay(self.email, self.token_hash)
+        send_email_verify.delay(self.email, self.token)
