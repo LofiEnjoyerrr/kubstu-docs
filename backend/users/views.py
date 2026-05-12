@@ -83,8 +83,8 @@ class CredentialAvailableAPIView(APIView):
 
 class RegisterAPIView(APIView):
     permission_classes = [AllowAny]
-    throttle_classes = [ExtendedRateThrottle]
-    throttle_scope = 'users_register_scope'
+    # throttle_classes = [ExtendedRateThrottle]
+    # throttle_scope = 'users_register_scope'
 
     @extend_schema(
         request=RegisterSerializer(),

@@ -1,12 +1,12 @@
 import secrets
 import uuid
-from random import choice
-from string import ascii_letters
+import random
 
 from django.contrib.auth import get_user_model
 from django.utils.text import slugify
 
 from users.constants import EMAIL_VERIFY_TOKEN_LENGTH
+from users.constants.email_verify import EMAIL_VERIFY_TOKEN_ALPHABET
 
 User = get_user_model()
 
@@ -30,4 +30,4 @@ def generate_username(email: str) -> str:
 
 
 def generate_email_verify_token() -> str:
-    return ''.join([choice(ascii_letters) for _ in range(EMAIL_VERIFY_TOKEN_LENGTH)])
+    return ''.join([random.choice(EMAIL_VERIFY_TOKEN_ALPHABET) for _ in range(EMAIL_VERIFY_TOKEN_LENGTH)])
