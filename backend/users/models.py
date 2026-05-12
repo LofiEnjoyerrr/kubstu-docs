@@ -36,6 +36,7 @@ class RegisterRequest(AutoDateMixin):
     class RegisterRequestStatus(models.TextChoices):
         WAIT = 'wait', 'Ожидание'
         EXPIRED = 'expired', 'Просрочено'
+        COMPLETE = 'complete', 'Завершено'
 
     email = models.EmailField()
     username = models.CharField(max_length=150, validators=[UnicodeUsernameValidator()])

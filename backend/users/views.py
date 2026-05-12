@@ -1,5 +1,4 @@
 from django.contrib.auth import login, logout
-from django.http import Http404, HttpResponseNotFound
 from drf_spectacular.utils import OpenApiResponse, extend_schema
 from rest_framework import status
 from rest_framework.views import APIView
