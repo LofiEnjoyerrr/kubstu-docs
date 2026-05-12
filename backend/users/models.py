@@ -33,11 +33,21 @@ class User(AbstractUser, AutoDateMixin):
 
 
 class RegisterRequest(AutoDateMixin):
+    class RegisterRequestStatus(models.TextChoices):
+        WAIT = 'wait', 'Ожидание'
+        EXPIRED = 'expired', 'Просрочено'
+
     email = models.EmailField()
     username = models.CharField(max_length=150, validators=[UnicodeUsernameValidator()])
     password = models.CharField(max_length=128)
 
     ip = models.GenericIPAddressField()
+
+    status = models.CharField(
+        choices=RegisterRequestStatus,
+        default=RegisterRequestStatus.WAIT,
+        db_default=RegisterRequestStatus.WAIT,
+    )
 
     token_hash = models.CharField(max_length=128)
 
