@@ -4,6 +4,7 @@ from django.db import models
 
 from common_utils.orm.mixins import AutoDateMixin
 from common_utils.utils import generate_random_color
+from users.tasks import send_email_verify
 
 
 def get_user_avatar_filepath(instance: 'User', filename: str) -> str:
@@ -39,3 +40,6 @@ class RegisterRequest(AutoDateMixin):
     ip = models.GenericIPAddressField()
 
     token_hash = models.CharField(max_length=128)
+
+    def send_email_verify(self):
+        send_email_verify.delay(self.email, self.token_hash)

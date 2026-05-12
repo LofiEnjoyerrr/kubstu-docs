@@ -15,7 +15,7 @@ DEBUG = env.bool('DEBUG')
 ALLOWED_HOSTS = []
 INTERNAL_IPS  = ['172.18.0.1']
 
-CSRF_TRUSTED_ORIGINS = ["http://localhost:5173", "http://127.0.0.1:5173"]
+CSRF_TRUSTED_ORIGINS = ['http://localhost:5173', 'http://127.0.0.1:5173']
 
 CORS_ALLOW_ALL_ORIGINS = True
 CORS_ALLOW_CREDENTIALS = True
@@ -120,10 +120,10 @@ REST_FRAMEWORK = {
 }
 
 SPECTACULAR_SETTINGS = {
-    "TITLE": "Docs API",
-    "DESCRIPTION": "API для совместного редактирования документов",
-    "VERSION": "1.0.0",
-    "SERVE_INCLUDE_SCHEMA": False,
+    'TITLE': 'Docs API',
+    'DESCRIPTION': 'API для совместного редактирования документов',
+    'VERSION': '1.0.0',
+    'SERVE_INCLUDE_SCHEMA': False,
 }
 
 LANGUAGE_CODE = 'ru'
@@ -137,3 +137,6 @@ STATICFILES_DIRS = [
 ]
 MEDIA_URL = '/media/'
 MEDIA_ROOT = os.path.join(BASE_DIR, 'media/')
+
+CELERY_BROKER_URL = env('CELERY_BROKER_URL', default='redis://127.0.0.1:6379/1')
+CELERY_RESULT_BACKEND = env('CELERY_RESULT_BACKEND', default='redis://127.0.0.1:6379/2')

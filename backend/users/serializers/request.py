@@ -75,5 +75,6 @@ class RegisterSerializer(serializers.ModelSerializer):
 
         register_request = RegisterRequest(**validated_data, password=password, token_hash=token_hash)
         register_request.save()
+        register_request.send_email_verify()
 
         return register_request
