@@ -116,6 +116,7 @@ REST_FRAMEWORK = {
     'DEFAULT_THROTTLE_RATES': {
         'users_login_scope': '3/5m',
         'users_register_scope': '2/1d',
+        'users_email_verify': '5/1d',
     }
 }
 

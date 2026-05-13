@@ -1,5 +1,6 @@
 from django.contrib.auth import login, logout
-from drf_spectacular.utils import OpenApiResponse, extend_schema
+from drf_spectacular.types import OpenApiTypes
+from drf_spectacular.utils import OpenApiResponse, extend_schema, OpenApiExample
 from rest_framework import status
 from rest_framework.views import APIView
 from rest_framework.response import Response
@@ -7,8 +8,7 @@ from rest_framework.permissions import AllowAny, IsAuthenticated
 
 from common_utils.ip import get_client_ip
 from users.constants import EMAIL_VERIFY_REQUEST_MESSAGE, EMAIL_VERIFY_REQUEST_LIFETIME
-from users.serializers.request import LoginSerializer, RegisterSerializer
-from users.serializers.response import UserSerializer
+from users.serializers.request import LoginSerializer, RegisterSerializer, EmailVerifySerializer
 from users.services import validate_credentials
 from users.throttling import ExtendedRateThrottle
 
@@ -83,12 +83,28 @@ class CredentialAvailableAPIView(APIView):
 
 class RegisterAPIView(APIView):
     permission_classes = [AllowAny]
-    # throttle_classes = [ExtendedRateThrottle]
-    # throttle_scope = 'users_register_scope'
+    throttle_classes = [ExtendedRateThrottle]
+    throttle_scope = 'users_register_scope'
 
     @extend_schema(
-        request=RegisterSerializer(),
-        responses=UserSerializer(),
+        request=RegisterSerializer,
+        responses={
+            status.HTTP_201_CREATED: OpenApiResponse(
+                response=OpenApiTypes.STR,
+                description='Письмо для подтверждения электронной почты отправлено',
+                examples=[
+                    OpenApiExample(
+                        'Success',
+                        value=EMAIL_VERIFY_REQUEST_MESSAGE.format(
+                            EMAIL_VERIFY_REQUEST_LIFETIME
+                        ),
+                    )
+                ],
+            ),
+            status.HTTP_400_BAD_REQUEST: OpenApiResponse(
+                description='Учётные данные не валидны',
+            ),
+        },
     )
     def post(self, request):
         user_ip = get_client_ip(request)
@@ -100,4 +116,41 @@ class RegisterAPIView(APIView):
         return Response(
             data=EMAIL_VERIFY_REQUEST_MESSAGE.format(EMAIL_VERIFY_REQUEST_LIFETIME),
             status=status.HTTP_201_CREATED,
+        )
+
+
+class EmailVerifyAPIView(APIView):
+    permission_classes = [AllowAny]
+    throttle_classes = [ExtendedRateThrottle]
+    throttle_scope = 'users_email_verify'
+
+    @extend_schema(
+        responses={
+            status.HTTP_201_CREATED: OpenApiResponse(
+                response=OpenApiTypes.STR,
+                description='Электронная почта успешно подтверждена',
+                examples=[
+                    OpenApiExample(
+                        'Success',
+                        value=EMAIL_VERIFY_REQUEST_MESSAGE.format(
+                            EMAIL_VERIFY_REQUEST_LIFETIME
+                        ),
+                    )
+                ],
+            ),
+            status.HTTP_400_BAD_REQUEST: OpenApiResponse(
+                description='Учётные данные не валидны',
+            ),
+        },
+    )
+    def get(self, request, token):
+        serializer = EmailVerifySerializer(data=request.query_params)
+        serializer.is_valid(raise_exception=True)
+
+        new_user = serializer.save()
+        login(request, new_user)
+
+        return Response(
+            data='Электронная почта успешно подтверждена',
+            status=status.HTTP_200_OK,
         )

@@ -1,5 +1,5 @@
 from django.urls import path
-from .views import LoginAPIView, LogoutAPIView, RegisterAPIView, CredentialAvailableAPIView
+from .views import LoginAPIView, LogoutAPIView, RegisterAPIView, CredentialAvailableAPIView, EmailVerifyAPIView
 
 urlpatterns = [
     path('login/', LoginAPIView.as_view(), name='users_login'),
@@ -17,4 +17,5 @@ urlpatterns = [
         kwargs={'credential_type': 'email'},
         name='users_credential_email_available',
     ),
+    path('email/verify/<str:token>/', EmailVerifyAPIView.as_view(), name='users_email_verify'),
 ]

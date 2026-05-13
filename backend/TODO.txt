@@ -1,7 +1,6 @@
-1. Добавить подтверждение почты через email
 2. АПИ для поиска юзеров по никнейму
-3. celery задача на удаление старых RegisterRequest
-3. Разкомментировать throttle_classes в register view
+3. celery задача на expired старых RegisterRequest
+3. Reset Password
 
 
 4. Поработать над ALLOWED_HOSTS, INTERNAL_IPS, CSRF_TRUSTED_ORIGINS, CORS_ALLOW_ALL_ORIGINS, CORS_ALLOW_CREDENTIALS
