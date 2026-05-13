@@ -83,8 +83,8 @@ class CredentialAvailableAPIView(APIView):
 
 class RegisterAPIView(APIView):
     permission_classes = [AllowAny]
-    throttle_classes = [ExtendedRateThrottle]
-    throttle_scope = 'users_register_scope'
+    # throttle_classes = [ExtendedRateThrottle]
+    # throttle_scope = 'users_register_scope'
 
     @extend_schema(
         request=RegisterSerializer,
@@ -121,8 +121,8 @@ class RegisterAPIView(APIView):
 
 class EmailVerifyAPIView(APIView):
     permission_classes = [AllowAny]
-    throttle_classes = [ExtendedRateThrottle]
-    throttle_scope = 'users_email_verify'
+    # throttle_classes = [ExtendedRateThrottle]
+    # throttle_scope = 'users_email_verify'
 
     @extend_schema(
         responses={
@@ -144,7 +144,7 @@ class EmailVerifyAPIView(APIView):
         },
     )
     def get(self, request, token):
-        serializer = EmailVerifySerializer(data=request.query_params)
+        serializer = EmailVerifySerializer(data={'token': token})
         serializer.is_valid(raise_exception=True)
 
         new_user = serializer.save()
