@@ -20,14 +20,14 @@ services:
     command: >
       sh -c "
         python manage.py migrate &&
+        celery -A config.celery worker -E --loglevel=info --hostname=worker.basic --concurrency=3 &
         daphne -b 0.0.0.0 -p 8000 config.asgi:application
       "
 
   db:
     image: postgres
     container_name: db-1
-    env_file:
-    - .env
+    env_file: .env
     environment:
       POSTGRES_DB: ${DATABASE_NAME}
       POSTGRES_USER: ${DATABASE_USER}
