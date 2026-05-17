@@ -5,8 +5,9 @@ import random
 from django.contrib.auth import get_user_model
 from django.utils.text import slugify
 
-from users.constants import EMAIL_VERIFY_TOKEN_LENGTH
+from users.constants import EMAIL_VERIFY_TOKEN_LENGTH, PASSWORD_RESET_TOKEN_LENGTH
 from users.constants.email_verify import EMAIL_VERIFY_TOKEN_ALPHABET
+from users.constants.password_reset import PASSWORD_RESET_TOKEN_ALPHABET
 
 User = get_user_model()
 
@@ -31,3 +32,7 @@ def generate_username(email: str) -> str:
 
 def generate_email_verify_token() -> str:
     return ''.join([random.choice(EMAIL_VERIFY_TOKEN_ALPHABET) for _ in range(EMAIL_VERIFY_TOKEN_LENGTH)])
+
+
+def generate_password_reset_token() -> str:
+    return ''.join([random.choice(PASSWORD_RESET_TOKEN_ALPHABET) for _ in range(PASSWORD_RESET_TOKEN_LENGTH)])

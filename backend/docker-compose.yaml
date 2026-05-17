@@ -21,6 +21,7 @@ services:
       sh -c "
         python manage.py migrate &&
         celery -A config.celery worker -E --loglevel=info --hostname=worker.basic --concurrency=3 &
+        celery -A config.celery beat --loglevel=info &
         daphne -b 0.0.0.0 -p 8000 config.asgi:application
       "
 
