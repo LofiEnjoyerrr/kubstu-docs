@@ -62,6 +62,35 @@
           </div>
         </div>
 
+        <!-- Add comment button — visible when text is selected -->
+        <Transition name="fade">
+          <button
+            v-if="hasSelection && auth.isAuthenticated"
+            class="flex items-center gap-1.5 text-xs px-2.5 py-1.5 rounded-lg border border-amber-300 bg-amber-50 text-amber-700 hover:bg-amber-100 transition-colors font-medium"
+            @click="openAddComment"
+          >
+            <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M7 8h10M7 12h4m1 8l-4-4H5a2 2 0 01-2-2V6a2 2 0 012-2h14a2 2 0 012 2v8a2 2 0 01-2 2h-3l-4 4z" />
+            </svg>
+            Comment
+          </button>
+        </Transition>
+
+        <!-- Toggle comments panel -->
+        <button
+          class="flex items-center gap-1.5 text-xs px-2.5 py-1.5 rounded-lg border transition-colors"
+          :class="showComments
+            ? 'border-primary-300 bg-primary-50 text-primary-700'
+            : 'border-slate-200 bg-white text-slate-600 hover:bg-slate-50'"
+          title="Toggle comments"
+          @click="showComments = !showComments"
+        >
+          <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z" />
+          </svg>
+          <span v-if="comments.length" class="font-medium">{{ comments.length }}</span>
+        </button>
+
         <!-- Visibility toggle -->
         <button
           v-if="myRole === 'owner' && doc"
@@ -86,8 +115,8 @@
       </div>
     </header>
 
-    <!-- Editor -->
-    <main class="flex-1 pt-14 overflow-hidden flex flex-col">
+    <!-- Editor + optional comment sidebar -->
+    <main class="flex-1 pt-14 overflow-hidden flex flex-row">
       <div v-if="isLoading" class="flex-1 flex items-center justify-center">
         <svg class="w-8 h-8 animate-spin text-primary-500" fill="none" viewBox="0 0 24 24">
           <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"/>
@@ -102,16 +131,66 @@
         </div>
       </div>
 
-      <TiptapEditor
-        v-else
-        ref="editorRef"
-        v-model="editorContent"
-        :editable="canEdit"
-        class="flex-1"
-        @update:model-value="onEditorUpdate"
-        @selection-update="onSelectionUpdate"
-      />
+      <template v-else>
+        <TiptapEditor
+          ref="editorRef"
+          v-model="editorContent"
+          :editable="canEdit"
+          class="flex-1 min-w-0"
+          @update:model-value="onEditorUpdate"
+          @selection-update="onSelectionUpdate"
+        />
+
+        <Transition name="slide-panel">
+          <CommentPanel
+            v-if="showComments"
+            :comments="comments"
+            :current-user-id="auth.user?.id ?? null"
+            :is-owner="myRole === 'owner'"
+            @close="showComments = false"
+            @jump="jumpToComment"
+            @delete="handleDeleteComment"
+          />
+        </Transition>
+      </template>
     </main>
+
+    <!-- Add comment modal -->
+    <Teleport to="body">
+      <div
+        v-if="showAddComment"
+        class="fixed inset-0 z-50 flex items-center justify-center p-4"
+        @mousedown.self="showAddComment = false"
+      >
+        <div class="absolute inset-0 bg-black/40" />
+        <div class="relative w-full max-w-md bg-white rounded-2xl shadow-xl p-6">
+          <h2 class="font-semibold text-slate-800 mb-3">Add comment</h2>
+
+          <div v-if="pendingQuote" class="mb-4 bg-amber-50 border-l-4 border-amber-400 rounded-r-lg px-3 py-2">
+            <p class="text-xs text-amber-700 font-medium mb-0.5">Selected text</p>
+            <p class="text-sm text-slate-700 line-clamp-3 italic">"{{ pendingQuote }}"</p>
+          </div>
+
+          <form @submit.prevent="submitComment">
+            <textarea
+              v-model="commentText"
+              class="input w-full resize-none"
+              rows="3"
+              placeholder="Write a comment…"
+              autofocus
+              required
+            />
+            <p v-if="commentError" class="error-text mt-2">{{ commentError }}</p>
+            <div class="flex gap-2 justify-end mt-4">
+              <button type="button" class="btn-secondary" @click="showAddComment = false">Cancel</button>
+              <button type="submit" class="btn-primary" :disabled="isSubmittingComment || !commentText.trim()">
+                {{ isSubmittingComment ? 'Posting…' : 'Post comment' }}
+              </button>
+            </div>
+          </form>
+        </div>
+      </div>
+    </Teleport>
 
     <ShareModal
       v-if="showShare && doc"
@@ -130,8 +209,9 @@ import { useDocumentsStore } from '../stores/documents'
 import { useDocumentSocket } from '../composables/useDocumentSocket'
 import TiptapEditor from '../components/editor/TiptapEditor.vue'
 import ShareModal from '../components/ShareModal.vue'
+import CommentPanel from '../components/CommentPanel.vue'
 import * as docsApi from '../api/documents'
-import type { Document } from '../types'
+import type { Document, Comment } from '../types'
 
 const route = useRoute()
 const auth = useAuthStore()
@@ -150,20 +230,44 @@ const lastSaved = ref(false)
 const editableTitle = ref('')
 const myRole = ref<'owner' | 'editor' | 'viewer' | null>(null)
 
+// Comments state
+const comments = ref<Comment[]>([])
+const showComments = ref(false)
+const showAddComment = ref(false)
+const commentText = ref('')
+const commentError = ref('')
+const isSubmittingComment = ref(false)
+const pendingSelection = ref<{ from: number; to: number } | null>(null)
+const pendingQuote = ref('')
+
 let contentSaveTimer: ReturnType<typeof setTimeout> | null = null
 let titleSaveTimer: ReturnType<typeof setTimeout> | null = null
 
 const canEdit = computed(() => myRole.value === 'owner' || myRole.value === 'editor')
+const hasSelection = computed(() => {
+  const sel = pendingSelection.value
+  return sel !== null && sel.from !== sel.to
+})
 
 const socket = useDocumentSocket(docId.value)
 const { collaborators, isConnected } = socket
+
+function applyCommentHighlights() {
+  editorRef.value?.setComments(
+    comments.value.map(c => ({
+      id: c.id,
+      from: c.from_pos,
+      to: c.to_pos,
+      color: c.author_color,
+    })),
+  )
+}
 
 onMounted(async () => {
   try {
     doc.value = await docsStore.fetchDocument(docId.value)
     editableTitle.value = doc.value.title
 
-    // Parse initial content from REST
     try {
       editorContent.value = doc.value.content
         ? typeof doc.value.content === 'string'
@@ -174,18 +278,24 @@ onMounted(async () => {
       editorContent.value = null
     }
 
-    // Resolve the current user's role
     if (auth.isAuthenticated) {
       try {
         const res = await docsApi.getMyAccess(docId.value)
         myRole.value = res.data.role
       } catch {
-        // unauthenticated or no access; treat as viewer for public docs
         myRole.value = null
       }
     }
 
-    // WebSocket
+    // Load existing comments
+    try {
+      const res = await docsApi.getComments(docId.value)
+      comments.value = res.data
+    } catch {
+      // non-fatal
+    }
+
+    // WebSocket handlers
     socket.onInit((data) => {
       editorRef.value?.applyRemote(data.content)
     })
@@ -208,6 +318,19 @@ onMounted(async () => {
       editorRef.value?.clearCursor(userId)
     })
 
+    socket.onCommentAdd((comment) => {
+      if (!comments.value.find(c => c.id === comment.id)) {
+        comments.value.push(comment)
+        applyCommentHighlights()
+        showComments.value = true
+      }
+    })
+
+    socket.onCommentDelete((commentId) => {
+      comments.value = comments.value.filter(c => c.id !== commentId)
+      applyCommentHighlights()
+    })
+
     socket.connect()
 
     if (myRole.value === 'owner') {
@@ -225,6 +348,11 @@ onMounted(async () => {
   }
 })
 
+// Apply highlights after editor mounts (it may be null during onMounted)
+watch(editorRef, (ref) => {
+  if (ref && comments.value.length) applyCommentHighlights()
+})
+
 function onEditorUpdate(content: unknown) {
   if (!canEdit.value) return
   if (contentSaveTimer) clearTimeout(contentSaveTimer)
@@ -234,8 +362,58 @@ function onEditorUpdate(content: unknown) {
   }, 600)
 }
 
-function onSelectionUpdate(from: number, to: number) {
+function onSelectionUpdate(from: number, to: number, text: string) {
+  pendingSelection.value = { from, to }
+  if (from !== to) pendingQuote.value = text
   if (canEdit.value) socket.sendCursor(from, to)
+}
+
+function openAddComment() {
+  if (!pendingSelection.value || pendingSelection.value.from === pendingSelection.value.to) return
+  commentText.value = ''
+  commentError.value = ''
+  showAddComment.value = true
+}
+
+async function submitComment() {
+  if (!commentText.value.trim() || !pendingSelection.value) return
+  commentError.value = ''
+  isSubmittingComment.value = true
+  try {
+    const res = await docsApi.createComment(docId.value, {
+      quote: pendingQuote.value,
+      from_pos: pendingSelection.value.from,
+      to_pos: pendingSelection.value.to,
+      content: commentText.value.trim(),
+    })
+    // Add locally first; WS broadcast will also fire but dedup prevents double
+    if (!comments.value.find(c => c.id === res.data.id)) {
+      comments.value.push(res.data)
+    }
+    applyCommentHighlights()
+    showComments.value = true
+    showAddComment.value = false
+    commentText.value = ''
+  } catch {
+    commentError.value = 'Failed to post comment. Please try again.'
+  } finally {
+    isSubmittingComment.value = false
+  }
+}
+
+async function handleDeleteComment(commentId: number) {
+  try {
+    await docsApi.deleteComment(docId.value, commentId)
+    // WS broadcast will also handle deletion, but we update locally immediately
+    comments.value = comments.value.filter(c => c.id !== commentId)
+    applyCommentHighlights()
+  } catch {
+    // ignore
+  }
+}
+
+function jumpToComment(from: number, to: number) {
+  editorRef.value?.jumpTo(from, to)
 }
 
 function showSaved() {
@@ -267,3 +445,21 @@ watch(
   (d) => { if (d) doc.value = d },
 )
 </script>
+
+<style scoped>
+.slide-panel-enter-active,
+.slide-panel-leave-active {
+  transition: width 0.2s ease, opacity 0.2s ease;
+  overflow: hidden;
+}
+.slide-panel-enter-from,
+.slide-panel-leave-to {
+  width: 0;
+  opacity: 0;
+}
+.slide-panel-enter-to,
+.slide-panel-leave-from {
+  width: 20rem;
+  opacity: 1;
+}
+</style>

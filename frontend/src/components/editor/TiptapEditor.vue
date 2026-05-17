@@ -23,6 +23,8 @@ import Color from '@tiptap/extension-color'
 import EditorToolbar from './EditorToolbar.vue'
 import { RemoteCursors, setCursor, removeCursor } from './RemoteCursors'
 import type { RemoteCursor } from './RemoteCursors'
+import { CommentHighlights, setCommentMarks } from './CommentHighlights'
+import type { CommentMark } from './CommentHighlights'
 
 const props = defineProps<{
   modelValue: unknown
@@ -31,7 +33,7 @@ const props = defineProps<{
 
 const emit = defineEmits<{
   'update:modelValue': [value: unknown]
-  selectionUpdate: [from: number, to: number]
+  selectionUpdate: [from: number, to: number, text: string]
 }>()
 
 let isRemoteUpdate = false
@@ -48,6 +50,7 @@ const editor = useEditor({
     TextStyle,
     Color,
     RemoteCursors,
+    CommentHighlights,
   ],
   content: normalizeContent(props.modelValue),
   onUpdate: ({ editor }) => {
@@ -56,7 +59,8 @@ const editor = useEditor({
   },
   onSelectionUpdate: ({ editor }) => {
     const { from, to } = editor.state.selection
-    emit('selectionUpdate', from, to)
+    const text = from !== to ? editor.state.doc.textBetween(from, to, ' ') : ''
+    emit('selectionUpdate', from, to, text)
   },
 })
 
@@ -94,6 +98,16 @@ function clearCursor(userId: number | null | string) {
   if (editor.value) removeCursor(editor.value, userId)
 }
 
+function setComments(marks: CommentMark[]) {
+  if (editor.value) setCommentMarks(editor.value, marks)
+}
+
+function jumpTo(from: number, to: number) {
+  if (!editor.value) return
+  editor.value.commands.setTextSelection({ from, to })
+  editor.value.commands.scrollIntoView()
+}
+
 watch(
   () => props.modelValue,
   (val) => { applyRemote(val) },
@@ -104,7 +118,7 @@ watch(
   (val) => { editor.value?.setEditable(val ?? true) },
 )
 
-defineExpose({ applyRemote, updateCursor, clearCursor })
+defineExpose({ applyRemote, updateCursor, clearCursor, setComments, jumpTo })
 
 onBeforeUnmount(() => editor.value?.destroy())
 </script>

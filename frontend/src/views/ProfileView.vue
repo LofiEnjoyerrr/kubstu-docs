@@ -17,8 +17,8 @@
           <div class="relative">
             <div class="w-20 h-20 rounded-full overflow-hidden bg-slate-100">
               <img
-                v-if="resolveMediaUrl(auth.user.avatar)"
-                :src="resolveMediaUrl(auth.user.avatar)!"
+                v-if="previewUrl || auth.user?.avatar"
+                :src="previewUrl || resolveMediaUrl(auth.user?.avatar)!"
                 alt="Avatar"
                 class="w-full h-full object-cover"
               />

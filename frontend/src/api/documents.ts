@@ -30,3 +30,12 @@ export const deleteDocumentAccess = (docId: number, accessId: number) =>
 
 export const searchDocuments = (q: string) =>
   apiClient.get<import('../types').Document[]>('/api/docs/search/', { params: { q } })
+
+export const getComments = (docId: number) =>
+  apiClient.get<import('../types').Comment[]>(`/api/docs/${docId}/comments/`)
+
+export const createComment = (docId: number, data: { quote: string; from_pos: number; to_pos: number; content: string }) =>
+  apiClient.post<import('../types').Comment>(`/api/docs/${docId}/comments/`, data)
+
+export const deleteComment = (docId: number, commentId: number) =>
+  apiClient.delete(`/api/docs/${docId}/comments/${commentId}/`)

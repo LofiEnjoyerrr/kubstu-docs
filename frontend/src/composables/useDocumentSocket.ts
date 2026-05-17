@@ -1,10 +1,12 @@
 import { ref, onUnmounted } from 'vue'
-import type { CollaboratorInfo } from '../types'
+import type { CollaboratorInfo, Comment } from '../types'
 
 type InitCallback = (data: { content: unknown; version: number; users: CollaboratorInfo[] }) => void
 type EditCallback = (data: { delta: unknown; version: number; user_id: number; username: string; color: string }) => void
 type CursorCallback = (data: { user_id: number; username: string; color: string; position: { from: number; to: number } }) => void
 type UserLeaveCallback = (userId: number | null) => void
+type CommentAddCallback = (comment: Comment) => void
+type CommentDeleteCallback = (commentId: number) => void
 
 export function useDocumentSocket(docId: number) {
   const ws = ref<WebSocket | null>(null)
@@ -16,6 +18,8 @@ export function useDocumentSocket(docId: number) {
   let onEditCb: EditCallback | null = null
   let onCursorCb: CursorCallback | null = null
   let onUserLeaveCb: UserLeaveCallback | null = null
+  let onCommentAddCb: CommentAddCallback | null = null
+  let onCommentDeleteCb: CommentDeleteCallback | null = null
   let reconnectTimer: ReturnType<typeof setTimeout> | null = null
 
   function buildWsUrl() {
@@ -88,6 +92,14 @@ export function useDocumentSocket(docId: number) {
         onUserLeaveCb?.(leaveId)
         break
       }
+
+      case 'comment_add':
+        onCommentAddCb?.(data.comment as Comment)
+        break
+
+      case 'comment_delete':
+        onCommentDeleteCb?.(data.comment_id as number)
+        break
     }
   }
 
@@ -109,6 +121,8 @@ export function useDocumentSocket(docId: number) {
   function onEdit(cb: EditCallback) { onEditCb = cb }
   function onCursor(cb: CursorCallback) { onCursorCb = cb }
   function onUserLeave(cb: UserLeaveCallback) { onUserLeaveCb = cb }
+  function onCommentAdd(cb: CommentAddCallback) { onCommentAddCb = cb }
+  function onCommentDelete(cb: CommentDeleteCallback) { onCommentDeleteCb = cb }
 
   function disconnect() {
     if (reconnectTimer) { clearTimeout(reconnectTimer); reconnectTimer = null }
@@ -118,5 +132,9 @@ export function useDocumentSocket(docId: number) {
 
   onUnmounted(disconnect)
 
-  return { connect, disconnect, sendEdit, sendCursor, onInit, onEdit, onCursor, onUserLeave, collaborators, serverVersion, isConnected }
+  return {
+    connect, disconnect, sendEdit, sendCursor,
+    onInit, onEdit, onCursor, onUserLeave, onCommentAdd, onCommentDelete,
+    collaborators, serverVersion, isConnected,
+  }
 }
