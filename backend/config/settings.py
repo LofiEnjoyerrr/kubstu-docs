@@ -119,10 +119,10 @@ REST_FRAMEWORK = {
     ],
     'DEFAULT_SCHEMA_CLASS': 'drf_spectacular.openapi.AutoSchema',
     'DEFAULT_THROTTLE_RATES': {
-        'users_login_scope': '3/5m',
-        'users_register_scope': '2/1d',
-        'users_email_verify': '5/1d',
-        'users_password_reset_scope': '5/1d',
+        'users_login_scope': '30/5m',
+        'users_register_scope': '20/1d',
+        'users_email_verify': '50/1d',
+        'users_password_reset_scope': '50/1d',
     }
 }
 
