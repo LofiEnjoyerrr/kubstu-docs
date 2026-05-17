@@ -1,8 +1,14 @@
+import os
+import uuid
+
 from asgiref.sync import async_to_sync
 from channels.layers import get_channel_layer
+from django.conf import settings
+from django.core.files.storage import default_storage
 from drf_spectacular.utils import extend_schema
 from rest_framework import status
-from rest_framework.exceptions import PermissionDenied, NotFound
+from rest_framework.exceptions import PermissionDenied, NotFound, ValidationError
+from rest_framework.parsers import MultiPartParser
 from rest_framework.permissions import IsAuthenticated, AllowAny
 from rest_framework.response import Response
 from rest_framework.views import APIView
@@ -164,6 +170,30 @@ class DocumentsSearchAPIView(APIView):
             .order_by('title')[:20]
         )
         return Response(GetDocumentSerializer(documents, many=True).data)
+
+
+class DocumentImageUploadAPIView(APIView):
+    permission_classes = [IsAuthenticated]
+    parser_classes = [MultiPartParser]
+
+    def post(self, request, pk):
+        document = _get_document_or_404(pk)
+        _require_read_access(document, request.user)
+
+        image = request.FILES.get('image')
+        if not image:
+            raise ValidationError({'image': 'Файл не передан'})
+        if not image.content_type.startswith('image/'):
+            raise ValidationError({'image': 'Файл не является изображением'})
+
+        ext = os.path.splitext(image.name)[1].lower() or '.jpg'
+        filename = f'{uuid.uuid4().hex}{ext}'
+        filepath = f'docs/{pk}/images/{filename}'
+
+        saved = default_storage.save(filepath, image)
+        url = settings.MEDIA_URL + saved
+
+        return Response({'url': url}, status=status.HTTP_201_CREATED)
 
 
 class DocumentCommentsAPIView(APIView):

@@ -136,10 +136,13 @@
           ref="editorRef"
           v-model="editorContent"
           :editable="canEdit"
+          :doc-id="docId"
+          :doc-title="doc?.title"
           class="flex-1 min-w-0"
           @update:model-value="onEditorUpdate"
           @selection-update="onSelectionUpdate"
           @comment-positions-changed="onCommentPositionsChanged"
+          @docx-imported="onDocxImported"
         />
 
         <Transition name="slide-panel">
@@ -203,7 +206,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed, onMounted, watch } from 'vue'
+import { ref, computed, onMounted, watch, nextTick } from 'vue'
 import { useRoute } from 'vue-router'
 import { useAuthStore } from '../stores/auth'
 import { useDocumentsStore } from '../stores/documents'
@@ -480,6 +483,14 @@ async function syncCommentsToBackend() {
     ),
     ...deletes.map(id => docsApi.deleteComment(docId.value, id)),
   ])
+}
+
+async function onDocxImported() {
+  await nextTick()
+  if (!canEdit.value || editorContent.value == null) return
+  if (contentSaveTimer) clearTimeout(contentSaveTimer)
+  socket.sendEdit(editorContent.value, editorContent.value)
+  showSaved()
 }
 
 function showSaved() {
