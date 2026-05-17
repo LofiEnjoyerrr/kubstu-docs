@@ -9,14 +9,14 @@
           </svg>
         </div>
         <h1 class="text-2xl font-bold text-white">KubSTU Docs</h1>
-        <p class="text-primary-300 text-sm mt-1">Sign in to your account</p>
+        <p class="text-primary-300 text-sm mt-1">Sign in with your username or email</p>
       </div>
 
       <!-- Card -->
       <div class="card p-6 shadow-2xl">
         <form @submit.prevent="handleLogin" class="flex flex-col gap-4">
           <div class="form-group">
-            <label class="label" for="username">Username</label>
+            <label class="label" for="username">Username or email</label>
             <input
               id="username"
               v-model="form.username"
@@ -24,7 +24,7 @@
               :class="{ 'input-error': errors.username }"
               type="text"
               autocomplete="username"
-              placeholder="your_username"
+              placeholder="username or you@example.com"
               required
             />
             <p v-if="errors.username" class="error-text">{{ errors.username }}</p>

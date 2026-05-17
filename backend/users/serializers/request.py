@@ -17,17 +17,23 @@ from users.utils import generate_username, generate_email_verify_token, generate
 
 
 class LoginSerializer(serializers.Serializer):
-    username = serializers.CharField()
+    username = serializers.CharField()  # accepts username or email
     password = serializers.CharField()
 
     def validate(self, data):
-        user = authenticate(
-            username=data['username'],
-            password=data['password']
-        )
+        login_input = data['username']
+
+        # If the input looks like an email, resolve it to a username first.
+        if '@' in login_input:
+            try:
+                login_input = User.objects.values_list('username', flat=True).get(email=login_input)
+            except User.DoesNotExist:
+                pass
+
+        user = authenticate(username=login_input, password=data['password'])
 
         if not user:
-            raise serializers.ValidationError('Неверные учётные данны')
+            raise serializers.ValidationError('Неверные учётные данные')
 
         data['user'] = user
         return data
@@ -95,6 +101,7 @@ class EmailVerifySerializer(serializers.Serializer):
         request_lifetime = datetime.now() - timedelta(minutes=EMAIL_VERIFY_REQUEST_LIFETIME)
 
         register_request = RegisterRequest.objects.filter(
+            token=value,
             dt_created__gte=request_lifetime,
             status=RegisterRequest.RegisterRequestStatus.WAIT,
         ).first()

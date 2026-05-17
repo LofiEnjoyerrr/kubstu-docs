@@ -10,17 +10,6 @@
 
     <div class="flex-1" />
 
-    <!-- Nav links -->
-    <nav class="flex items-center gap-1">
-      <RouterLink
-        to="/dashboard"
-        class="nav-link"
-        :class="{ 'nav-link-active': route.name === 'dashboard' }"
-      >
-        Dashboard
-      </RouterLink>
-    </nav>
-
     <!-- User menu -->
     <div v-if="auth.user" class="relative" ref="menuRef">
       <button
@@ -86,11 +75,10 @@
 
 <script setup lang="ts">
 import { ref, computed, onMounted, onBeforeUnmount } from 'vue'
-import { useRoute, useRouter } from 'vue-router'
+import { useRouter } from 'vue-router'
 import { useAuthStore } from '../stores/auth'
 
 const auth = useAuthStore()
-const route = useRoute()
 const router = useRouter()
 const menuOpen = ref(false)
 const menuRef = ref<HTMLElement | null>(null)
@@ -120,11 +108,3 @@ onMounted(() => document.addEventListener('mousedown', handleClickOutside))
 onBeforeUnmount(() => document.removeEventListener('mousedown', handleClickOutside))
 </script>
 
-<style scoped>
-.nav-link {
-  @apply px-3 py-1.5 rounded-lg text-sm font-medium text-primary-200 hover:text-white hover:bg-primary-800 transition-colors;
-}
-.nav-link-active {
-  @apply text-white bg-primary-700;
-}
-</style>

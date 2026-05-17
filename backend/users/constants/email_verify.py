@@ -17,7 +17,7 @@ EMAIL_VERIFY_MAIL_TITLE = 'Подтверждение электронной п�
 
 EMAIL_VERIFY_MAIL_BODY = """От вашего адреса электронной почты была проведена попытка активации электронной почты.
 Если это были Вы, то перейдите по следующему адресу, чтобы подтвердить почту
-http://127.0.0.1:8000/api/users/email/verify/{}/
+http://localhost:5173/verify-email/{}/
 Если это были не Вы, проигнорируйте данное сообщение."""
 
 EMAIL_VERIFY_TOKEN_ALPHABET = ''.join((ascii_letters, digits))
