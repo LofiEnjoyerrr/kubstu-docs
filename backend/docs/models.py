@@ -10,6 +10,12 @@ class Document(AutoDateMixin):
     title = models.CharField(max_length=255, verbose_name='Заголовок документа')
     content = models.TextField(blank=True, default='', db_default='', verbose_name='Текст документа')
 
+    is_public = models.BooleanField(
+        default=False,
+        db_default=False,
+        verbose_name='Публичный',
+    )
+
     owner = models.ForeignKey(
         User,
         on_delete=models.CASCADE,

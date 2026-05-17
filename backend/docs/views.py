@@ -1,18 +1,47 @@
 from drf_spectacular.utils import extend_schema
 from rest_framework import status
-from rest_framework.generics import RetrieveUpdateAPIView, RetrieveAPIView
-from rest_framework.permissions import IsAuthenticated
+from rest_framework.exceptions import PermissionDenied, NotFound
+from rest_framework.permissions import IsAuthenticated, AllowAny
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
-from docs.models import Document
-from docs.serializers import GetDocumentSerializer, PostDocumentSerializer
-from docs.selectors import get_user_documents, get_available_documents, get_user_opened_documents
+from docs.models import Document, DocumentAccess
+from docs.serializers import (
+    GetDocumentSerializer,
+    PostDocumentSerializer,
+    PatchDocumentSerializer,
+    DocumentAccessSerializer,
+    PostDocumentAccessSerializer,
+    PatchDocumentAccessSerializer,
+)
+from docs.selectors import get_user_documents, get_user_opened_documents
+
+
+def _get_document_or_404(pk: int) -> Document:
+    try:
+        return Document.objects.select_related('owner').get(pk=pk)
+    except Document.DoesNotExist:
+        raise NotFound('Документ не найден')
+
+
+def _require_owner(document: Document, user) -> None:
+    if document.owner != user:
+        raise PermissionDenied('Только владелец документа может выполнить это действие')
+
+
+def _require_read_access(document: Document, user) -> None:
+    if document.is_public:
+        return
+    if not user.is_authenticated:
+        raise PermissionDenied('Требуется авторизация')
+    if document.owner == user:
+        return
+    if document.accesses.filter(user=user).exists():
+        return
+    raise PermissionDenied('У вас нет доступа к этому документу')
 
 
 class MeDocumentsCreateAPIView(APIView):
-    get_serializer_class = GetDocumentSerializer
-    post_serializer_class = PostDocumentSerializer
     permission_classes = [IsAuthenticated]
 
     @extend_schema(
@@ -20,11 +49,11 @@ class MeDocumentsCreateAPIView(APIView):
         responses=GetDocumentSerializer(),
     )
     def post(self, request, *args, **kwargs):
-        serializer = self.post_serializer_class(data=request.data)
+        serializer = PostDocumentSerializer(data=request.data)
         serializer.is_valid(raise_exception=True)
         document = serializer.save(owner=request.user)
         return Response(
-            self.get_serializer_class(instance=document).data,
+            GetDocumentSerializer(instance=document).data,
             status=status.HTTP_201_CREATED,
         )
 
@@ -32,12 +61,10 @@ class MeDocumentsCreateAPIView(APIView):
 class DocumentsAvailableListAPIView(APIView):
     permission_classes = [IsAuthenticated]
 
-    @extend_schema(
-        responses=GetDocumentSerializer(),
-    )
+    @extend_schema(responses=GetDocumentSerializer(many=True))
     def get(self, request):
-        owner_documents = get_user_documents(self.request.user).select_related('owner')
-        opened_documents = get_user_opened_documents(self.request.user).select_related('owner')
+        owner_documents = get_user_documents(request.user).select_related('owner')
+        opened_documents = get_user_opened_documents(request.user).select_related('owner')
         response_data = {
             'owner_documents': GetDocumentSerializer(owner_documents, many=True).data,
             'opened_documents': GetDocumentSerializer(opened_documents, many=True).data,
@@ -45,9 +72,75 @@ class DocumentsAvailableListAPIView(APIView):
         return Response(response_data, status=status.HTTP_200_OK)
 
 
-class DocumentsRetrieveAPIView(RetrieveAPIView):
-    serializer_class = GetDocumentSerializer
+class DocumentsRetrieveUpdateAPIView(APIView):
+    permission_classes = [AllowAny]
+
+    @extend_schema(responses=GetDocumentSerializer())
+    def get(self, request, pk):
+        document = _get_document_or_404(pk)
+        _require_read_access(document, request.user)
+        return Response(GetDocumentSerializer(document).data)
+
+    @extend_schema(request=PatchDocumentSerializer(), responses=GetDocumentSerializer())
+    def patch(self, request, pk):
+        document = _get_document_or_404(pk)
+        _require_owner(document, request.user)
+        serializer = PatchDocumentSerializer(document, data=request.data, partial=True)
+        serializer.is_valid(raise_exception=True)
+        document = serializer.save()
+        return Response(GetDocumentSerializer(document).data)
+
+
+class DocumentAccessListCreateAPIView(APIView):
     permission_classes = [IsAuthenticated]
 
-    def get_queryset(self):
-        return Document.objects.all().select_related('owner')
+    def _get_owned_document(self, pk, user) -> Document:
+        document = _get_document_or_404(pk)
+        _require_owner(document, user)
+        return document
+
+    @extend_schema(responses=DocumentAccessSerializer(many=True))
+    def get(self, request, pk):
+        document = self._get_owned_document(pk, request.user)
+        accesses = document.accesses.select_related('user').all()
+        return Response(DocumentAccessSerializer(accesses, many=True).data)
+
+    @extend_schema(request=PostDocumentAccessSerializer(), responses=DocumentAccessSerializer())
+    def post(self, request, pk):
+        document = self._get_owned_document(pk, request.user)
+        serializer = PostDocumentAccessSerializer(
+            data=request.data,
+            context={'document': document},
+        )
+        serializer.is_valid(raise_exception=True)
+        access = serializer.save()
+        return Response(
+            DocumentAccessSerializer(access).data,
+            status=status.HTTP_201_CREATED,
+        )
+
+
+class DocumentAccessDetailAPIView(APIView):
+    permission_classes = [IsAuthenticated]
+
+    def _get_access(self, pk, access_id, user) -> DocumentAccess:
+        document = _get_document_or_404(pk)
+        _require_owner(document, user)
+        try:
+            return DocumentAccess.objects.select_related('user').get(pk=access_id, document=document)
+        except DocumentAccess.DoesNotExist:
+            raise NotFound('Запись доступа не найдена')
+
+    @extend_schema(request=PatchDocumentAccessSerializer(), responses=DocumentAccessSerializer())
+    def patch(self, request, pk, access_id):
+        access = self._get_access(pk, access_id, request.user)
+        serializer = PatchDocumentAccessSerializer(access, data=request.data, partial=True)
+        serializer.is_valid(raise_exception=True)
+        access = serializer.save()
+        return Response(DocumentAccessSerializer(access).data)
+
+    @extend_schema(responses=None)
+    def delete(self, request, pk, access_id):
+        access = self._get_access(pk, access_id, request.user)
+        access.delete()
+        return Response(status=status.HTTP_204_NO_CONTENT)

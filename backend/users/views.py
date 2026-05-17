@@ -19,6 +19,7 @@ from users.serializers.request import (
     RegisterSerializer,
     EmailVerifySerializer,
     UserSearchSerializer,
+    UserUpdateSerializer,
     PasswordResetRequestSerializer,
     PasswordResetConfirmSerializer,
 )
@@ -168,6 +169,21 @@ class EmailVerifyAPIView(APIView):
             data='Электронная почта успешно подтверждена',
             status=status.HTTP_200_OK,
         )
+
+
+class MeAPIView(APIView):
+    permission_classes = [IsAuthenticated]
+
+    @extend_schema(responses=UserSerializer())
+    def get(self, request):
+        return Response(UserSerializer(request.user).data)
+
+    @extend_schema(request=UserUpdateSerializer(), responses=UserSerializer())
+    def patch(self, request):
+        serializer = UserUpdateSerializer(request.user, data=request.data, partial=True)
+        serializer.is_valid(raise_exception=True)
+        serializer.save()
+        return Response(UserSerializer(request.user).data)
 
 
 class UserSearchAPIView(APIView):

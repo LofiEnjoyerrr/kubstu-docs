@@ -118,6 +118,23 @@ class EmailVerifySerializer(serializers.Serializer):
         return new_user
 
 
+class UserUpdateSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = User
+        fields = ('first_name', 'last_name', 'username', 'avatar')
+        extra_kwargs = {
+            'first_name': {'required': False},
+            'last_name': {'required': False},
+            'username': {'required': False},
+            'avatar': {'required': False},
+        }
+
+    def validate_username(self, value: str):
+        if User.objects.filter(username=value).exclude(pk=self.instance.pk).exists():
+            raise ValidationError('Имя пользователя уже занято')
+        return value
+
+
 class UserSearchSerializer(serializers.Serializer):
     q = serializers.CharField(min_length=1, max_length=150)
 
