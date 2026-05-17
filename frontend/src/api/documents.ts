@@ -13,6 +13,9 @@ export const getDocument = (id: number) =>
 export const updateDocument = (id: number, data: { title?: string; is_public?: boolean }) =>
   apiClient.patch<Document>(`/api/docs/${id}/`, data)
 
+export const getMyAccess = (docId: number) =>
+  apiClient.get<{ role: 'owner' | 'editor' | 'viewer' }>(`/api/docs/${docId}/my-access/`)
+
 export const getDocumentAccesses = (docId: number) =>
   apiClient.get<DocumentAccess[]>(`/api/docs/${docId}/accesses/`)
 
@@ -24,3 +27,6 @@ export const updateDocumentAccess = (docId: number, accessId: number, role: 'vie
 
 export const deleteDocumentAccess = (docId: number, accessId: number) =>
   apiClient.delete(`/api/docs/${docId}/accesses/${accessId}/`)
+
+export const searchDocuments = (q: string) =>
+  apiClient.get<import('../types').Document[]>('/api/docs/search/', { params: { q } })

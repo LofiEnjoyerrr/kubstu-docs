@@ -3,11 +3,7 @@
     <!-- Top bar -->
     <header class="fixed inset-x-0 top-0 z-40 h-14 bg-white border-b border-slate-200 flex items-center px-4 gap-3 shadow-sm">
       <!-- Back -->
-      <RouterLink
-        to="/dashboard"
-        class="btn-ghost btn-sm p-1.5 rounded-lg"
-        title="Back to dashboard"
-      >
+      <RouterLink to="/dashboard" class="btn-ghost btn-sm p-1.5 rounded-lg" title="Back to dashboard">
         <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
           <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10 19l-7-7m0 0l7-7m-7 7h18" />
         </svg>
@@ -16,17 +12,17 @@
       <!-- Title -->
       <div class="flex-1 flex items-center gap-2 min-w-0">
         <input
-          v-if="isOwner"
+          v-if="myRole === 'owner'"
           v-model="editableTitle"
           class="flex-1 min-w-0 font-semibold text-slate-800 bg-transparent border-none outline-none focus:ring-0 text-base truncate"
-          :placeholder="'Untitled'"
+          placeholder="Untitled"
           @blur="saveTitle"
           @keydown.enter.prevent="($event.target as HTMLInputElement).blur()"
         />
         <span v-else class="font-semibold text-slate-800 text-base truncate">
           {{ doc?.title || 'Untitled' }}
         </span>
-        <!-- Saving indicator -->
+
         <Transition name="fade">
           <span v-if="isSaving" class="text-xs text-slate-400 shrink-0">Saving…</span>
           <span v-else-if="lastSaved" class="text-xs text-slate-400 shrink-0">Saved</span>
@@ -35,7 +31,7 @@
 
       <!-- Right controls -->
       <div class="flex items-center gap-2 shrink-0">
-        <!-- Connection indicator -->
+        <!-- Connection -->
         <div
           class="flex items-center gap-1.5 text-xs px-2 py-1 rounded-full"
           :class="isConnected ? 'bg-green-100 text-green-700' : 'bg-slate-100 text-slate-500'"
@@ -44,7 +40,10 @@
           {{ isConnected ? 'Live' : 'Offline' }}
         </div>
 
-        <!-- Collaborators -->
+        <!-- Viewer badge -->
+        <span v-if="myRole === 'viewer'" class="badge-slate text-xs">View only</span>
+
+        <!-- Online collaborators -->
         <div v-if="collaborators.length" class="flex -space-x-2">
           <div
             v-for="c in collaborators.slice(0, 5)"
@@ -63,12 +62,11 @@
           </div>
         </div>
 
-        <!-- Visibility toggle (owner only) -->
+        <!-- Visibility toggle -->
         <button
-          v-if="isOwner && doc"
+          v-if="myRole === 'owner' && doc"
           class="flex items-center gap-1.5 text-xs px-2.5 py-1.5 rounded-lg border transition-colors"
           :class="doc.is_public ? 'border-green-300 bg-green-50 text-green-700 hover:bg-green-100' : 'border-slate-200 bg-white text-slate-600 hover:bg-slate-50'"
-          :title="doc.is_public ? 'Make private' : 'Make public'"
           @click="togglePublic"
         >
           <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -78,12 +76,8 @@
           {{ doc.is_public ? 'Public' : 'Private' }}
         </button>
 
-        <!-- Share button (owner only) -->
-        <button
-          v-if="isOwner"
-          class="btn-primary btn-sm"
-          @click="showShare = true"
-        >
+        <!-- Share -->
+        <button v-if="myRole === 'owner'" class="btn-primary btn-sm" @click="showShare = true">
           <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
             <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8.684 13.342C8.886 12.938 9 12.482 9 12c0-.482-.114-.938-.316-1.342m0 2.684a3 3 0 110-2.684m0 2.684l6.632 3.316m-6.632-6l6.632-3.316m0 0a3 3 0 105.367-2.684 3 3 0 00-5.367 2.684zm0 9.316a3 3 0 105.368 2.684 3 3 0 00-5.368-2.684z" />
           </svg>
@@ -92,9 +86,8 @@
       </div>
     </header>
 
-    <!-- Editor area -->
+    <!-- Editor -->
     <main class="flex-1 pt-14 overflow-hidden flex flex-col">
-      <!-- Loading -->
       <div v-if="isLoading" class="flex-1 flex items-center justify-center">
         <svg class="w-8 h-8 animate-spin text-primary-500" fill="none" viewBox="0 0 24 24">
           <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"/>
@@ -102,7 +95,6 @@
         </svg>
       </div>
 
-      <!-- Error -->
       <div v-else-if="loadError" class="flex-1 flex items-center justify-center px-4">
         <div class="text-center">
           <p class="text-slate-600 mb-4">{{ loadError }}</p>
@@ -110,7 +102,6 @@
         </div>
       </div>
 
-      <!-- Editor -->
       <TiptapEditor
         v-else
         ref="editorRef"
@@ -122,7 +113,6 @@
       />
     </main>
 
-    <!-- Share modal -->
     <ShareModal
       v-if="showShare && doc"
       :doc-id="doc.id"
@@ -140,6 +130,7 @@ import { useDocumentsStore } from '../stores/documents'
 import { useDocumentSocket } from '../composables/useDocumentSocket'
 import TiptapEditor from '../components/editor/TiptapEditor.vue'
 import ShareModal from '../components/ShareModal.vue'
+import * as docsApi from '../api/documents'
 import type { Document } from '../types'
 
 const route = useRoute()
@@ -157,18 +148,12 @@ const editorRef = ref<InstanceType<typeof TiptapEditor> | null>(null)
 const isSaving = ref(false)
 const lastSaved = ref(false)
 const editableTitle = ref('')
+const myRole = ref<'owner' | 'editor' | 'viewer' | null>(null)
 
-let saveTimer: ReturnType<typeof setTimeout> | null = null
 let contentSaveTimer: ReturnType<typeof setTimeout> | null = null
+let titleSaveTimer: ReturnType<typeof setTimeout> | null = null
 
-const isOwner = computed(() => auth.user?.id === doc.value?.owner_id)
-const canEdit = computed(() => {
-  if (!doc.value) return false
-  if (!auth.isAuthenticated) return false
-  // Owner always can edit; non-owners are assumed editors if they have WS access.
-  // Backend enforces access at the WS connection level.
-  return true
-})
+const canEdit = computed(() => myRole.value === 'owner' || myRole.value === 'editor')
 
 const socket = useDocumentSocket(docId.value)
 const { collaborators, isConnected } = socket
@@ -189,7 +174,18 @@ onMounted(async () => {
       editorContent.value = null
     }
 
-    // Connect WebSocket
+    // Resolve the current user's role
+    if (auth.isAuthenticated) {
+      try {
+        const res = await docsApi.getMyAccess(docId.value)
+        myRole.value = res.data.role
+      } catch {
+        // unauthenticated or no access; treat as viewer for public docs
+        myRole.value = null
+      }
+    }
+
+    // WebSocket
     socket.onInit((data) => {
       editorRef.value?.applyRemote(data.content)
     })
@@ -198,10 +194,23 @@ onMounted(async () => {
       editorRef.value?.applyRemote(data.delta)
     })
 
+    socket.onCursor((data) => {
+      editorRef.value?.updateCursor({
+        user_id: data.user_id,
+        username: data.username,
+        color: data.color,
+        from: data.position.from,
+        to: data.position.to,
+      })
+    })
+
+    socket.onUserLeave((userId) => {
+      editorRef.value?.clearCursor(userId)
+    })
+
     socket.connect()
 
-    // Fetch accesses for share modal (owner only)
-    if (auth.user?.id === doc.value.owner_id) {
+    if (myRole.value === 'owner') {
       docsStore.fetchAccesses(docId.value)
     }
   } catch (e: unknown) {
@@ -218,31 +227,30 @@ onMounted(async () => {
 
 function onEditorUpdate(content: unknown) {
   if (!canEdit.value) return
-  // Debounce save + broadcast
   if (contentSaveTimer) clearTimeout(contentSaveTimer)
   contentSaveTimer = setTimeout(() => {
     socket.sendEdit(content, content)
-    persistContent(content)
+    showSaved()
   }, 600)
 }
 
 function onSelectionUpdate(from: number, to: number) {
-  socket.sendCursor(from, to)
+  if (canEdit.value) socket.sendCursor(from, to)
 }
 
-async function persistContent(_content: unknown) {
-  // Content is persisted via WebSocket on the backend. No additional REST call needed.
+function showSaved() {
   isSaving.value = true
-  await new Promise((r) => setTimeout(r, 300))
-  isSaving.value = false
-  lastSaved.value = true
-  setTimeout(() => { lastSaved.value = false }, 2000)
+  setTimeout(() => {
+    isSaving.value = false
+    lastSaved.value = true
+    setTimeout(() => { lastSaved.value = false }, 2000)
+  }, 300)
 }
 
 function saveTitle() {
   if (!doc.value || editableTitle.value === doc.value.title) return
-  if (saveTimer) clearTimeout(saveTimer)
-  saveTimer = setTimeout(async () => {
+  if (titleSaveTimer) clearTimeout(titleSaveTimer)
+  titleSaveTimer = setTimeout(async () => {
     await docsStore.updateDocument(docId.value, { title: editableTitle.value })
     doc.value = docsStore.currentDocument
   }, 800)

@@ -6,12 +6,16 @@ from docs.views import (
     DocumentsRetrieveUpdateAPIView,
     DocumentAccessListCreateAPIView,
     DocumentAccessDetailAPIView,
+    MyDocumentAccessAPIView,
+    DocumentsSearchAPIView,
 )
 
 urlpatterns = [
     path('me/', MeDocumentsCreateAPIView.as_view(), name='me_docs_list'),
     path('available/', DocumentsAvailableListAPIView.as_view(), name='docs_available'),
+    path('search/', DocumentsSearchAPIView.as_view(), name='docs_search'),
     path('<int:pk>/', DocumentsRetrieveUpdateAPIView.as_view(), name='doc'),
+    path('<int:pk>/my-access/', MyDocumentAccessAPIView.as_view(), name='doc_my_access'),
     path('<int:pk>/accesses/', DocumentAccessListCreateAPIView.as_view(), name='doc_accesses'),
     path('<int:pk>/accesses/<int:access_id>/', DocumentAccessDetailAPIView.as_view(), name='doc_access_detail'),
 ]

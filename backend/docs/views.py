@@ -13,6 +13,7 @@ from docs.serializers import (
     DocumentAccessSerializer,
     PostDocumentAccessSerializer,
     PatchDocumentAccessSerializer,
+    MyAccessSerializer,
 )
 from docs.selectors import get_user_documents, get_user_opened_documents
 
@@ -118,6 +119,40 @@ class DocumentAccessListCreateAPIView(APIView):
             DocumentAccessSerializer(access).data,
             status=status.HTTP_201_CREATED,
         )
+
+
+class MyDocumentAccessAPIView(APIView):
+    permission_classes = [AllowAny]
+
+    def get(self, request, pk):
+        document = _get_document_or_404(pk)
+        if request.user.is_authenticated and document.owner == request.user:
+            return Response(MyAccessSerializer({'role': 'owner'}).data)
+        if document.is_public:
+            role = 'editor' if request.user.is_authenticated else 'viewer'
+            return Response(MyAccessSerializer({'role': role}).data)
+        if not request.user.is_authenticated:
+            raise PermissionDenied('Требуется авторизация')
+        try:
+            access = DocumentAccess.objects.get(document=document, user=request.user)
+            return Response(MyAccessSerializer({'role': access.role}).data)
+        except DocumentAccess.DoesNotExist:
+            raise PermissionDenied('У вас нет доступа к этому документу')
+
+
+class DocumentsSearchAPIView(APIView):
+    permission_classes = [AllowAny]
+
+    def get(self, request):
+        q = request.query_params.get('q', '').strip()
+        if not q:
+            return Response([])
+        documents = (
+            Document.objects.filter(is_public=True, title__icontains=q)
+            .select_related('owner')
+            .order_by('title')[:20]
+        )
+        return Response(GetDocumentSerializer(documents, many=True).data)
 
 
 class DocumentAccessDetailAPIView(APIView):

@@ -4,6 +4,7 @@ import type { CollaboratorInfo } from '../types'
 type InitCallback = (data: { content: unknown; version: number; users: CollaboratorInfo[] }) => void
 type EditCallback = (data: { delta: unknown; version: number; user_id: number; username: string; color: string }) => void
 type CursorCallback = (data: { user_id: number; username: string; color: string; position: { from: number; to: number } }) => void
+type UserLeaveCallback = (userId: number | null) => void
 
 export function useDocumentSocket(docId: number) {
   const ws = ref<WebSocket | null>(null)
@@ -14,6 +15,7 @@ export function useDocumentSocket(docId: number) {
   let onInitCb: InitCallback | null = null
   let onEditCb: EditCallback | null = null
   let onCursorCb: CursorCallback | null = null
+  let onUserLeaveCb: UserLeaveCallback | null = null
   let reconnectTimer: ReturnType<typeof setTimeout> | null = null
 
   function buildWsUrl() {
@@ -80,9 +82,12 @@ export function useDocumentSocket(docId: number) {
         break
       }
 
-      case 'user_leave':
-        collaborators.value = collaborators.value.filter((c) => c.user_id !== data.user_id)
+      case 'user_leave': {
+        const leaveId = data.user_id as number | null
+        collaborators.value = collaborators.value.filter((c) => c.user_id !== leaveId)
+        onUserLeaveCb?.(leaveId)
         break
+      }
     }
   }
 
@@ -103,6 +108,7 @@ export function useDocumentSocket(docId: number) {
   function onInit(cb: InitCallback) { onInitCb = cb }
   function onEdit(cb: EditCallback) { onEditCb = cb }
   function onCursor(cb: CursorCallback) { onCursorCb = cb }
+  function onUserLeave(cb: UserLeaveCallback) { onUserLeaveCb = cb }
 
   function disconnect() {
     if (reconnectTimer) { clearTimeout(reconnectTimer); reconnectTimer = null }
@@ -112,5 +118,5 @@ export function useDocumentSocket(docId: number) {
 
   onUnmounted(disconnect)
 
-  return { connect, disconnect, sendEdit, sendCursor, onInit, onEdit, onCursor, collaborators, serverVersion, isConnected }
+  return { connect, disconnect, sendEdit, sendCursor, onInit, onEdit, onCursor, onUserLeave, collaborators, serverVersion, isConnected }
 }

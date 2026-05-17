@@ -90,3 +90,7 @@ class PatchDocumentAccessSerializer(serializers.ModelSerializer):
     class Meta:
         model = DocumentAccess
         fields = ('role',)
+
+
+class MyAccessSerializer(serializers.Serializer):
+    role = serializers.CharField()

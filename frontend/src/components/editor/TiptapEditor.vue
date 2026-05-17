@@ -1,6 +1,6 @@
 <template>
   <div class="flex flex-col flex-1 overflow-hidden">
-    <EditorToolbar v-if="editor" :editor="editor" />
+    <EditorToolbar v-if="editor && editable" :editor="editor" />
     <div class="flex-1 overflow-y-auto">
       <div class="max-w-4xl mx-auto px-8 py-10 min-h-full">
         <EditorContent :editor="editor" class="tiptap-editor focus:outline-none min-h-[60vh]" />
@@ -21,6 +21,8 @@ import Placeholder from '@tiptap/extension-placeholder'
 import TextStyle from '@tiptap/extension-text-style'
 import Color from '@tiptap/extension-color'
 import EditorToolbar from './EditorToolbar.vue'
+import { RemoteCursors, setCursor, removeCursor } from './RemoteCursors'
+import type { RemoteCursor } from './RemoteCursors'
 
 const props = defineProps<{
   modelValue: unknown
@@ -45,6 +47,7 @@ const editor = useEditor({
     Placeholder.configure({ placeholder: 'Start writing your document…' }),
     TextStyle,
     Color,
+    RemoteCursors,
   ],
   content: normalizeContent(props.modelValue),
   onUpdate: ({ editor }) => {
@@ -65,12 +68,30 @@ function normalizeContent(val: unknown) {
   return val
 }
 
-// Apply remote content without triggering our own onUpdate
 function applyRemote(content: unknown) {
   if (!editor.value) return
   isRemoteUpdate = true
+
+  const { from, to } = editor.value.state.selection
+
   editor.value.commands.setContent(normalizeContent(content) as string, false)
+
+  // Restore the local cursor after the full-document replace
+  const newSize = editor.value.state.doc.content.size
+  editor.value.commands.setTextSelection({
+    from: Math.min(from, newSize),
+    to: Math.min(to, newSize),
+  })
+
   isRemoteUpdate = false
+}
+
+function updateCursor(cursor: RemoteCursor) {
+  if (editor.value) setCursor(editor.value, cursor)
+}
+
+function clearCursor(userId: number | null | string) {
+  if (editor.value) removeCursor(editor.value, userId)
 }
 
 watch(
@@ -83,7 +104,7 @@ watch(
   (val) => { editor.value?.setEditable(val ?? true) },
 )
 
-defineExpose({ applyRemote })
+defineExpose({ applyRemote, updateCursor, clearCursor })
 
 onBeforeUnmount(() => editor.value?.destroy())
 </script>

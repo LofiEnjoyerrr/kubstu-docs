@@ -17,40 +17,81 @@
         </button>
       </div>
 
-      <!-- Loading -->
-      <div v-if="isLoading" class="flex justify-center items-center py-24">
-        <svg class="w-8 h-8 animate-spin text-primary-500" fill="none" viewBox="0 0 24 24">
-          <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"/>
-          <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8H4z"/>
-        </svg>
+      <!-- Search bar -->
+      <div class="mb-8">
+        <div class="relative max-w-xl">
+          <svg class="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400 pointer-events-none" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
+          </svg>
+          <input
+            v-model="searchQuery"
+            type="search"
+            placeholder="Search public documents…"
+            class="input pl-9 w-full"
+            @input="onSearchInput"
+          />
+          <div v-if="isSearching" class="absolute right-3 top-1/2 -translate-y-1/2">
+            <svg class="w-4 h-4 animate-spin text-primary-500" fill="none" viewBox="0 0 24 24">
+              <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"/>
+              <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8H4z"/>
+            </svg>
+          </div>
+        </div>
       </div>
 
-      <template v-else>
-        <!-- My documents -->
+      <!-- Search results -->
+      <template v-if="searchQuery.trim()">
         <section class="mb-10">
           <h2 class="text-sm font-semibold text-slate-500 uppercase tracking-wider mb-4">
-            Created by me ({{ docs.ownerDocuments.length }})
+            Search results{{ searchResults.length ? ` (${searchResults.length})` : '' }}
           </h2>
-          <div v-if="!docs.ownerDocuments.length" class="card p-10 text-center text-slate-400">
-            <svg class="w-10 h-10 mx-auto mb-3 opacity-40" fill="currentColor" viewBox="0 0 24 24">
-              <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8l-6-6zm-1 1.5L18.5 9H13V3.5zM6 20V4h5v7h7v9H6z"/>
+          <div v-if="!isSearching && !searchResults.length" class="card p-10 text-center text-slate-400">
+            <svg class="w-10 h-10 mx-auto mb-3 opacity-40" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9.172 16.172a4 4 0 015.656 0M9 10h.01M15 10h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
             </svg>
-            <p class="text-sm">No documents yet. Create your first one!</p>
+            <p class="text-sm">No public documents found for "{{ searchQuery }}"</p>
           </div>
           <div v-else class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
-            <DocumentCard v-for="doc in docs.ownerDocuments" :key="doc.id" :doc="doc" />
+            <DocumentCard v-for="doc in searchResults" :key="doc.id" :doc="doc" />
           </div>
         </section>
+      </template>
 
-        <!-- Shared with me -->
-        <section v-if="docs.openedDocuments.length">
-          <h2 class="text-sm font-semibold text-slate-500 uppercase tracking-wider mb-4">
-            Shared with me ({{ docs.openedDocuments.length }})
-          </h2>
-          <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
-            <DocumentCard v-for="doc in docs.openedDocuments" :key="doc.id" :doc="doc" />
-          </div>
-        </section>
+      <!-- My documents -->
+      <template v-else>
+        <!-- Loading -->
+        <div v-if="isLoading" class="flex justify-center items-center py-24">
+          <svg class="w-8 h-8 animate-spin text-primary-500" fill="none" viewBox="0 0 24 24">
+            <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"/>
+            <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8H4z"/>
+          </svg>
+        </div>
+
+        <template v-else>
+          <section class="mb-10">
+            <h2 class="text-sm font-semibold text-slate-500 uppercase tracking-wider mb-4">
+              Created by me ({{ docs.ownerDocuments.length }})
+            </h2>
+            <div v-if="!docs.ownerDocuments.length" class="card p-10 text-center text-slate-400">
+              <svg class="w-10 h-10 mx-auto mb-3 opacity-40" fill="currentColor" viewBox="0 0 24 24">
+                <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8l-6-6zm-1 1.5L18.5 9H13V3.5zM6 20V4h5v7h7v9H6z"/>
+              </svg>
+              <p class="text-sm">No documents yet. Create your first one!</p>
+            </div>
+            <div v-else class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
+              <DocumentCard v-for="doc in docs.ownerDocuments" :key="doc.id" :doc="doc" />
+            </div>
+          </section>
+
+          <section v-if="docs.openedDocuments.length">
+            <h2 class="text-sm font-semibold text-slate-500 uppercase tracking-wider mb-4">
+              Shared with me ({{ docs.openedDocuments.length }})
+            </h2>
+            <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
+              <DocumentCard v-for="doc in docs.openedDocuments" :key="doc.id" :doc="doc" />
+            </div>
+          </section>
+        </template>
       </template>
     </div>
 
@@ -93,6 +134,8 @@ import { useRouter } from 'vue-router'
 import { useAuthStore } from '../stores/auth'
 import { useDocumentsStore } from '../stores/documents'
 import DocumentCard from '../components/DocumentCard.vue'
+import * as docsApi from '../api/documents'
+import type { Document } from '../types'
 
 const auth = useAuthStore()
 const docs = useDocumentsStore()
@@ -104,6 +147,11 @@ const newTitle = ref('')
 const isCreating = ref(false)
 const createError = ref('')
 
+const searchQuery = ref('')
+const searchResults = ref<Document[]>([])
+const isSearching = ref(false)
+let searchTimer: ReturnType<typeof setTimeout> | null = null
+
 onMounted(async () => {
   try {
     await docs.fetchAvailable()
@@ -111,6 +159,26 @@ onMounted(async () => {
     isLoading.value = false
   }
 })
+
+function onSearchInput() {
+  if (searchTimer) clearTimeout(searchTimer)
+  const q = searchQuery.value.trim()
+  if (!q) {
+    searchResults.value = []
+    return
+  }
+  isSearching.value = true
+  searchTimer = setTimeout(async () => {
+    try {
+      const res = await docsApi.searchDocuments(q)
+      searchResults.value = res.data
+    } catch {
+      searchResults.value = []
+    } finally {
+      isSearching.value = false
+    }
+  }, 400)
+}
 
 async function createDocument() {
   createError.value = ''
