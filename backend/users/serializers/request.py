@@ -141,6 +141,38 @@ class UserUpdateSerializer(serializers.ModelSerializer):
             raise ValidationError('Имя пользователя уже занято')
         return value
 
+    def validate_avatar(self, value):
+        import io
+        from PIL import Image
+        from django.core.files.uploadedfile import InMemoryUploadedFile
+
+        img = Image.open(value)
+
+        # Palette images may carry transparency — convert to RGBA first.
+        if img.mode == 'P':
+            img = img.convert('RGBA')
+
+        # Flatten any alpha channel onto a plain white background.
+        if img.mode in ('RGBA', 'LA'):
+            background = Image.new('RGB', img.size, (255, 255, 255))
+            background.paste(img, mask=img.split()[-1])
+            img = background
+        elif img.mode != 'RGB':
+            img = img.convert('RGB')
+
+        buf = io.BytesIO()
+        img.save(buf, format='JPEG', quality=85, optimize=True)
+        buf.seek(0)
+
+        return InMemoryUploadedFile(
+            buf,
+            'ImageField',
+            'avatar.jpg',
+            'image/jpeg',
+            buf.getbuffer().nbytes,
+            None,
+        )
+
 
 class UserSearchSerializer(serializers.Serializer):
     q = serializers.CharField(min_length=1, max_length=150)

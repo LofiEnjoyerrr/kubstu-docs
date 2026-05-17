@@ -7,6 +7,7 @@ type CursorCallback = (data: { user_id: number; username: string; color: string;
 type UserLeaveCallback = (userId: number | null) => void
 type CommentAddCallback = (comment: Comment) => void
 type CommentDeleteCallback = (commentId: number) => void
+type CommentUpdateCallback = (comment: Comment) => void
 
 export function useDocumentSocket(docId: number) {
   const ws = ref<WebSocket | null>(null)
@@ -20,6 +21,7 @@ export function useDocumentSocket(docId: number) {
   let onUserLeaveCb: UserLeaveCallback | null = null
   let onCommentAddCb: CommentAddCallback | null = null
   let onCommentDeleteCb: CommentDeleteCallback | null = null
+  let onCommentUpdateCb: CommentUpdateCallback | null = null
   let reconnectTimer: ReturnType<typeof setTimeout> | null = null
 
   function buildWsUrl() {
@@ -100,6 +102,10 @@ export function useDocumentSocket(docId: number) {
       case 'comment_delete':
         onCommentDeleteCb?.(data.comment_id as number)
         break
+
+      case 'comment_update':
+        onCommentUpdateCb?.(data.comment as Comment)
+        break
     }
   }
 
@@ -123,6 +129,7 @@ export function useDocumentSocket(docId: number) {
   function onUserLeave(cb: UserLeaveCallback) { onUserLeaveCb = cb }
   function onCommentAdd(cb: CommentAddCallback) { onCommentAddCb = cb }
   function onCommentDelete(cb: CommentDeleteCallback) { onCommentDeleteCb = cb }
+  function onCommentUpdate(cb: CommentUpdateCallback) { onCommentUpdateCb = cb }
 
   function disconnect() {
     if (reconnectTimer) { clearTimeout(reconnectTimer); reconnectTimer = null }
@@ -143,7 +150,7 @@ export function useDocumentSocket(docId: number) {
 
   return {
     connect, disconnect, sendEdit, sendCursor,
-    onInit, onEdit, onCursor, onUserLeave, onCommentAdd, onCommentDelete,
+    onInit, onEdit, onCursor, onUserLeave, onCommentAdd, onCommentDelete, onCommentUpdate,
     collaborators, serverVersion, isConnected,
   }
 }

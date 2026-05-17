@@ -1,7 +1,7 @@
 <template>
   <div class="flex flex-col h-screen">
     <!-- Top bar -->
-    <header class="fixed inset-x-0 top-0 z-40 h-14 bg-white border-b border-slate-200 flex items-center px-4 gap-3 shadow-sm">
+    <header class="fixed inset-x-0 top-14 z-30 h-14 bg-white border-b border-slate-200 flex items-center px-4 gap-3 shadow-sm">
       <!-- Back -->
       <RouterLink to="/dashboard" class="btn-ghost btn-sm p-1.5 rounded-lg" title="Back to dashboard">
         <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -116,7 +116,7 @@
     </header>
 
     <!-- Editor + optional comment sidebar -->
-    <main class="flex-1 pt-14 overflow-hidden flex flex-row">
+    <main class="flex-1 pt-28 overflow-hidden flex flex-row">
       <div v-if="isLoading" class="flex-1 flex items-center justify-center">
         <svg class="w-8 h-8 animate-spin text-primary-500" fill="none" viewBox="0 0 24 24">
           <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"/>
@@ -139,6 +139,7 @@
           class="flex-1 min-w-0"
           @update:model-value="onEditorUpdate"
           @selection-update="onSelectionUpdate"
+          @comment-positions-changed="onCommentPositionsChanged"
         />
 
         <Transition name="slide-panel">
@@ -242,6 +243,13 @@ const pendingQuote = ref('')
 
 let contentSaveTimer: ReturnType<typeof setTimeout> | null = null
 let titleSaveTimer: ReturnType<typeof setTimeout> | null = null
+let commentSyncTimer: ReturnType<typeof setTimeout> | null = null
+
+// Pending comment position changes to send to the backend (debounced).
+// Key = comment id, value = latest {from, to, quote} to PATCH.
+const pendingCommentUpdates = new Map<number, { id: number; from: number; to: number; quote: string }>()
+// Comment ids that collapsed to nothing and must be deleted on the backend.
+const pendingCommentDeletes = new Set<number>()
 
 const canEdit = computed(() => myRole.value === 'owner' || myRole.value === 'editor')
 const hasSelection = computed(() => {
@@ -331,6 +339,14 @@ onMounted(async () => {
       applyCommentHighlights()
     })
 
+    socket.onCommentUpdate((comment) => {
+      const idx = comments.value.findIndex(c => c.id === comment.id)
+      if (idx !== -1) {
+        comments.value[idx] = comment
+        applyCommentHighlights()
+      }
+    })
+
     socket.connect()
 
     if (myRole.value === 'owner') {
@@ -414,6 +430,56 @@ async function handleDeleteComment(commentId: number) {
 
 function jumpToComment(from: number, to: number) {
   editorRef.value?.jumpTo(from, to)
+}
+
+function onCommentPositionsChanged(payload: {
+  updated: Array<{ id: number; from: number; to: number; quote: string }>
+  deleted: number[]
+}) {
+  // Update the sidebar immediately so the user sees live feedback.
+  for (const u of payload.updated) {
+    const c = comments.value.find(c => c.id === u.id)
+    if (c) {
+      c.quote = u.quote
+      c.from_pos = u.from
+      c.to_pos = u.to
+    }
+  }
+  for (const id of payload.deleted) {
+    comments.value = comments.value.filter(c => c.id !== id)
+  }
+
+  // Accumulate changes for the debounced backend sync.
+  for (const u of payload.updated) {
+    pendingCommentUpdates.set(u.id, u)
+  }
+  for (const id of payload.deleted) {
+    // A deleted comment doesn't need a PATCH — just a DELETE.
+    pendingCommentUpdates.delete(id)
+    pendingCommentDeletes.add(id)
+  }
+
+  if (commentSyncTimer) clearTimeout(commentSyncTimer)
+  commentSyncTimer = setTimeout(syncCommentsToBackend, 500)
+}
+
+async function syncCommentsToBackend() {
+  commentSyncTimer = null
+  const updates = [...pendingCommentUpdates.values()]
+  const deletes = [...pendingCommentDeletes]
+  pendingCommentUpdates.clear()
+  pendingCommentDeletes.clear()
+
+  await Promise.allSettled([
+    ...updates.map(u =>
+      docsApi.updateComment(docId.value, u.id, {
+        quote: u.quote,
+        from_pos: u.from,
+        to_pos: u.to,
+      }),
+    ),
+    ...deletes.map(id => docsApi.deleteComment(docId.value, id)),
+  ])
 }
 
 function showSaved() {

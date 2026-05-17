@@ -23,7 +23,7 @@ import Color from '@tiptap/extension-color'
 import EditorToolbar from './EditorToolbar.vue'
 import { RemoteCursors, setCursor, removeCursor } from './RemoteCursors'
 import type { RemoteCursor } from './RemoteCursors'
-import { CommentHighlights, setCommentMarks } from './CommentHighlights'
+import { CommentHighlights, setCommentMarks, getCommentMarks } from './CommentHighlights'
 import type { CommentMark } from './CommentHighlights'
 
 const props = defineProps<{
@@ -34,9 +34,19 @@ const props = defineProps<{
 const emit = defineEmits<{
   'update:modelValue': [value: unknown]
   selectionUpdate: [from: number, to: number, text: string]
+  commentPositionsChanged: [payload: { updated: Array<{ id: number; from: number; to: number; quote: string }>; deleted: number[] }]
 }>()
 
 let isRemoteUpdate = false
+let storedCommentMarks: CommentMark[] = []
+// Stringified JSON of the last content we emitted ourselves.
+// Used to detect the v-model round-trip (parent reflects our own emit back
+// as a prop change) and skip calling applyRemote / setContent for it —
+// that would otherwise reset comment positions on every keystroke.
+let lastEmittedJson = ''
+// Stringified JSON of the last comment-marks state we reported outward.
+// Used to skip emitting commentPositionsChanged when nothing actually moved.
+let lastReportedMarksJson = ''
 
 const editor = useEditor({
   editable: props.editable ?? true,
@@ -55,12 +65,56 @@ const editor = useEditor({
   content: normalizeContent(props.modelValue),
   onUpdate: ({ editor }) => {
     if (isRemoteUpdate) return
-    emit('update:modelValue', editor.getJSON())
+    const json = editor.getJSON()
+    lastEmittedJson = JSON.stringify(json)
+    emit('update:modelValue', json)
   },
   onSelectionUpdate: ({ editor }) => {
     const { from, to } = editor.state.selection
     const text = from !== to ? editor.state.doc.textBetween(from, to, ' ') : ''
     emit('selectionUpdate', from, to, text)
+  },
+  onTransaction: ({ editor, transaction }) => {
+    // Only react to local document mutations; skip remote updates and
+    // non-document transactions (cursor moves, meta-only dispatches, etc.).
+    if (isRemoteUpdate) return
+    if (!transaction.docChanged) return
+
+    const currentMarks = getCommentMarks(editor)
+    const currentJson = JSON.stringify(currentMarks)
+    if (currentJson === lastReportedMarksJson) return
+
+    // Build sets for quick lookup
+    const prevById = new Map(storedCommentMarks.map(m => [m.id, m]))
+    const currById = new Map(currentMarks.map(m => [m.id, m]))
+
+    // Comments whose range collapsed to nothing → delete them
+    const deleted: number[] = []
+    for (const id of prevById.keys()) {
+      if (!currById.has(id)) deleted.push(id)
+    }
+
+    // Comments whose boundaries moved → update them
+    const updated: Array<{ id: number; from: number; to: number; quote: string }> = []
+    const docSize = editor.state.doc.content.size
+    for (const mark of currentMarks) {
+      const prev = prevById.get(mark.id)
+      if (!prev || prev.from !== mark.from || prev.to !== mark.to) {
+        const safeFrom = Math.max(0, Math.min(mark.from, docSize))
+        const safeTo   = Math.max(0, Math.min(mark.to,   docSize))
+        const quote = safeFrom < safeTo
+          ? editor.state.doc.textBetween(safeFrom, safeTo, ' ')
+          : ''
+        updated.push({ id: mark.id, from: mark.from, to: mark.to, quote })
+      }
+    }
+
+    storedCommentMarks = currentMarks
+    lastReportedMarksJson = currentJson
+
+    if (updated.length > 0 || deleted.length > 0) {
+      emit('commentPositionsChanged', { updated, deleted })
+    }
   },
 })
 
@@ -80,12 +134,19 @@ function applyRemote(content: unknown) {
 
   editor.value.commands.setContent(normalizeContent(content) as string, false)
 
-  // Restore the local cursor after the full-document replace
+  // Restore the local cursor after the full-document replace.
   const newSize = editor.value.state.doc.content.size
   editor.value.commands.setTextSelection({
     from: Math.min(from, newSize),
     to: Math.min(to, newSize),
   })
+
+  // setContent issues a full-replace transaction which collapses all mapped
+  // comment positions to 0. Re-apply the canonical server positions so
+  // highlights remain visible after remote edits.
+  if (storedCommentMarks.length) {
+    setCommentMarks(editor.value, storedCommentMarks)
+  }
 
   isRemoteUpdate = false
 }
@@ -99,6 +160,8 @@ function clearCursor(userId: number | null | string) {
 }
 
 function setComments(marks: CommentMark[]) {
+  storedCommentMarks = marks
+  lastReportedMarksJson = JSON.stringify(marks)
   if (editor.value) setCommentMarks(editor.value, marks)
 }
 
@@ -110,7 +173,16 @@ function jumpTo(from: number, to: number) {
 
 watch(
   () => props.modelValue,
-  (val) => { applyRemote(val) },
+  (val) => {
+    // Skip the round-trip: when the user edits locally, onUpdate emits the new
+    // JSON upward, the parent stores it in editorContent, and Vue reflects it
+    // back here as a prop change. That would call setContent() and wipe the
+    // in-flight comment position mapping. Compare against the last thing we
+    // emitted and bail out if they match.
+    const incoming = JSON.stringify(normalizeContent(val))
+    if (incoming === lastEmittedJson) return
+    applyRemote(val)
+  },
 )
 
 watch(

@@ -122,3 +122,15 @@ class CreateCommentSerializer(serializers.ModelSerializer):
     class Meta:
         model = Comment
         fields = ('quote', 'from_pos', 'to_pos', 'content')
+
+
+class UpdateCommentSerializer(serializers.ModelSerializer):
+    """Used to sync shrinking/moving ranges back from the editor."""
+    class Meta:
+        model = Comment
+        fields = ('quote', 'from_pos', 'to_pos')
+        extra_kwargs = {
+            'quote': {'required': False},
+            'from_pos': {'required': False},
+            'to_pos': {'required': False},
+        }

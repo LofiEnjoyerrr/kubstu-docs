@@ -22,8 +22,25 @@ export const CommentHighlights = Extension.create({
         state: {
           init(): CommentMark[] { return [] },
           apply(tr, marks): CommentMark[] {
+            // Explicit replacement (e.g. setComments call) always wins.
             const meta = tr.getMeta(key) as CommentMark[] | undefined
-            return meta !== undefined ? meta : marks
+            if (meta !== undefined) return meta
+
+            // No document change → positions are still valid.
+            if (!tr.docChanged) return marks
+
+            // Map every comment's boundaries through the transaction steps.
+            // Bias +1 on `from` keeps the start at the right edge of any
+            // insertion, bias -1 on `to` pulls the end left when the
+            // character at the boundary is deleted → the range shrinks
+            // rather than swallowing adjacent text.
+            return marks
+              .map(m => ({
+                ...m,
+                from: tr.mapping.map(m.from, 1),
+                to:   tr.mapping.map(m.to,   -1),
+              }))
+              .filter(m => m.from < m.to) // collapsed range → highlight gone
           },
         },
         props: {
@@ -56,4 +73,8 @@ export const CommentHighlights = Extension.create({
 export function setCommentMarks(editor: Editor, marks: CommentMark[]) {
   const { tr } = editor.state
   editor.view.dispatch(tr.setMeta(key, marks))
+}
+
+export function getCommentMarks(editor: Editor): CommentMark[] {
+  return key.getState(editor.state) ?? []
 }

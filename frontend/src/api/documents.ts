@@ -37,5 +37,11 @@ export const getComments = (docId: number) =>
 export const createComment = (docId: number, data: { quote: string; from_pos: number; to_pos: number; content: string }) =>
   apiClient.post<import('../types').Comment>(`/api/docs/${docId}/comments/`, data)
 
+export const updateComment = (
+  docId: number,
+  commentId: number,
+  data: { quote?: string; from_pos?: number; to_pos?: number },
+) => apiClient.patch(`/api/docs/${docId}/comments/${commentId}/`, data)
+
 export const deleteComment = (docId: number, commentId: number) =>
   apiClient.delete(`/api/docs/${docId}/comments/${commentId}/`)

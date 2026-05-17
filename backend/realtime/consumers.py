@@ -190,6 +190,12 @@ class DocumentConsumer(AsyncWebsocketConsumer):
             'comment_id': event['comment_id'],
         }))
 
+    async def broadcast_comment_update(self, event):
+        await self.send(text_data=json.dumps({
+            'type': 'comment_update',
+            'comment': event['comment'],
+        }))
+
     # ------------------------------------------------------------------ helpers
 
     def _build_user_info(self) -> dict:

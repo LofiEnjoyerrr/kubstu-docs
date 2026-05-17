@@ -18,6 +18,7 @@ from docs.serializers import (
     MyAccessSerializer,
     CommentSerializer,
     CreateCommentSerializer,
+    UpdateCommentSerializer,
 )
 from docs.selectors import get_user_documents, get_user_opened_documents
 
@@ -190,12 +191,28 @@ class DocumentCommentsAPIView(APIView):
 class DocumentCommentDetailAPIView(APIView):
     permission_classes = [IsAuthenticated]
 
-    def delete(self, request, pk, comment_id):
+    def _get_comment(self, pk, comment_id) -> tuple[Document, Comment]:
         document = _get_document_or_404(pk)
         try:
-            comment = Comment.objects.get(pk=comment_id, document=document)
+            comment = Comment.objects.select_related('author').get(pk=comment_id, document=document)
         except Comment.DoesNotExist:
             raise NotFound('Комментарий не найден')
+        return document, comment
+
+    def patch(self, request, pk, comment_id):
+        document, comment = self._get_comment(pk, comment_id)
+        # Only the comment author or document owner may sync positions
+        if comment.author != request.user and document.owner != request.user:
+            raise PermissionDenied('Нет прав на редактирование комментария')
+        serializer = UpdateCommentSerializer(comment, data=request.data, partial=True)
+        serializer.is_valid(raise_exception=True)
+        comment = serializer.save()
+        data = CommentSerializer(comment).data
+        _broadcast_to_doc(pk, {'type': 'broadcast_comment_update', 'comment': dict(data)})
+        return Response(data)
+
+    def delete(self, request, pk, comment_id):
+        document, comment = self._get_comment(pk, comment_id)
         if comment.author != request.user and document.owner != request.user:
             raise PermissionDenied('Нет прав на удаление комментария')
         comment.delete()

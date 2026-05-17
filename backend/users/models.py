@@ -9,7 +9,7 @@ from users.tasks import send_email_verify, send_password_reset_email
 
 
 def get_user_avatar_filepath(instance: 'User', filename: str) -> str:
-    return f'users/avatars/user_{instance.id}.webp'
+    return f'users/avatars/user_{instance.id}.jpg'
 
 
 class User(AbstractUser, AutoDateMixin):
