@@ -17,9 +17,9 @@ export function useDocumentSocket(docId: number) {
   let reconnectTimer: ReturnType<typeof setTimeout> | null = null
 
   function buildWsUrl() {
-    const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:'
-    const host = window.location.host
-    return `${protocol}//${host}/ws/docs/${docId}/`
+    const base: string = import.meta.env.VITE_API_BASE ?? 'http://localhost:8000'
+    const wsBase = base.replace(/^http/, 'ws')
+    return `${wsBase}/ws/docs/${docId}/`
   }
 
   function connect() {
