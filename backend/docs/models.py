@@ -16,6 +16,12 @@ class Document(AutoDateMixin):
         verbose_name='Публичный',
     )
 
+    version = models.PositiveIntegerField(
+        default=0,
+        db_default=0,
+        verbose_name='Версия',
+    )
+
     owner = models.ForeignKey(
         User,
         on_delete=models.CASCADE,
