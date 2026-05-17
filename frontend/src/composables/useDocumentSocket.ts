@@ -126,8 +126,17 @@ export function useDocumentSocket(docId: number) {
 
   function disconnect() {
     if (reconnectTimer) { clearTimeout(reconnectTimer); reconnectTimer = null }
-    ws.value?.close()
-    ws.value = null
+    if (ws.value) {
+      // Null out all handlers BEFORE close() so the onclose callback
+      // doesn't schedule a reconnect when we intentionally leave.
+      ws.value.onopen = null
+      ws.value.onclose = null
+      ws.value.onerror = null
+      ws.value.onmessage = null
+      ws.value.close()
+      ws.value = null
+    }
+    isConnected.value = false
   }
 
   onUnmounted(disconnect)
