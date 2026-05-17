@@ -55,3 +55,16 @@ export interface CursorPosition {
 export interface CollaboratorCursor extends CollaboratorInfo {
   position: CursorPosition | null
 }
+
+export interface Comment {
+  id: number
+  author_id: number
+  author_username: string
+  author_color: string
+  author_avatar: string | null
+  quote: string
+  from_pos: number
+  to_pos: number
+  content: string
+  dt_created: string
+}

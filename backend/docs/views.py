@@ -1,3 +1,5 @@
+from asgiref.sync import async_to_sync
+from channels.layers import get_channel_layer
 from drf_spectacular.utils import extend_schema
 from rest_framework import status
 from rest_framework.exceptions import PermissionDenied, NotFound
@@ -5,7 +7,7 @@ from rest_framework.permissions import IsAuthenticated, AllowAny
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
-from docs.models import Document, DocumentAccess
+from docs.models import Document, DocumentAccess, Comment
 from docs.serializers import (
     GetDocumentSerializer,
     PostDocumentSerializer,
@@ -14,8 +16,16 @@ from docs.serializers import (
     PostDocumentAccessSerializer,
     PatchDocumentAccessSerializer,
     MyAccessSerializer,
+    CommentSerializer,
+    CreateCommentSerializer,
 )
 from docs.selectors import get_user_documents, get_user_opened_documents
+
+
+def _broadcast_to_doc(doc_id: int, event: dict) -> None:
+    channel_layer = get_channel_layer()
+    if channel_layer:
+        async_to_sync(channel_layer.group_send)(f'doc_{doc_id}', event)
 
 
 def _get_document_or_404(pk: int) -> Document:
@@ -153,6 +163,44 @@ class DocumentsSearchAPIView(APIView):
             .order_by('title')[:20]
         )
         return Response(GetDocumentSerializer(documents, many=True).data)
+
+
+class DocumentCommentsAPIView(APIView):
+    permission_classes = [AllowAny]
+
+    def get(self, request, pk):
+        document = _get_document_or_404(pk)
+        _require_read_access(document, request.user)
+        comments = Comment.objects.filter(document=document).select_related('author')
+        return Response(CommentSerializer(comments, many=True).data)
+
+    def post(self, request, pk):
+        if not request.user.is_authenticated:
+            raise PermissionDenied('Требуется авторизация')
+        document = _get_document_or_404(pk)
+        _require_read_access(document, request.user)
+        serializer = CreateCommentSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        comment = serializer.save(document=document, author=request.user)
+        data = CommentSerializer(comment).data
+        _broadcast_to_doc(pk, {'type': 'broadcast_comment_add', 'comment': dict(data)})
+        return Response(data, status=status.HTTP_201_CREATED)
+
+
+class DocumentCommentDetailAPIView(APIView):
+    permission_classes = [IsAuthenticated]
+
+    def delete(self, request, pk, comment_id):
+        document = _get_document_or_404(pk)
+        try:
+            comment = Comment.objects.get(pk=comment_id, document=document)
+        except Comment.DoesNotExist:
+            raise NotFound('Комментарий не найден')
+        if comment.author != request.user and document.owner != request.user:
+            raise PermissionDenied('Нет прав на удаление комментария')
+        comment.delete()
+        _broadcast_to_doc(pk, {'type': 'broadcast_comment_delete', 'comment_id': comment_id})
+        return Response(status=status.HTTP_204_NO_CONTENT)
 
 
 class DocumentAccessDetailAPIView(APIView):

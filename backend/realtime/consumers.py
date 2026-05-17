@@ -178,6 +178,18 @@ class DocumentConsumer(AsyncWebsocketConsumer):
             'username': event['username'],
         }))
 
+    async def broadcast_comment_add(self, event):
+        await self.send(text_data=json.dumps({
+            'type': 'comment_add',
+            'comment': event['comment'],
+        }))
+
+    async def broadcast_comment_delete(self, event):
+        await self.send(text_data=json.dumps({
+            'type': 'comment_delete',
+            'comment_id': event['comment_id'],
+        }))
+
     # ------------------------------------------------------------------ helpers
 
     def _build_user_info(self) -> dict:

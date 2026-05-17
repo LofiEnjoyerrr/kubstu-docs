@@ -37,6 +37,23 @@ class Document(AutoDateMixin):
         return self.title
 
 
+class Comment(AutoDateMixin):
+    document = models.ForeignKey(Document, on_delete=models.CASCADE, related_name='comments')
+    author = models.ForeignKey(User, on_delete=models.CASCADE, related_name='doc_comments')
+    quote = models.TextField(blank=True, default='')
+    from_pos = models.PositiveIntegerField(default=0)
+    to_pos = models.PositiveIntegerField(default=0)
+    content = models.TextField()
+
+    class Meta:
+        verbose_name = 'Комментарий'
+        verbose_name_plural = 'Комментарии'
+        ordering = ['dt_created']
+
+    def __str__(self):
+        return f'Comment by {self.author} on {self.document}'
+
+
 class DocumentAccess(AutoDateMixin):
     ROLE_CHOICES = [
         ('viewer', 'Наблюдатель'),

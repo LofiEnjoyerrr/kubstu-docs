@@ -8,6 +8,8 @@ from docs.views import (
     DocumentAccessDetailAPIView,
     MyDocumentAccessAPIView,
     DocumentsSearchAPIView,
+    DocumentCommentsAPIView,
+    DocumentCommentDetailAPIView,
 )
 
 urlpatterns = [
@@ -18,4 +20,6 @@ urlpatterns = [
     path('<int:pk>/my-access/', MyDocumentAccessAPIView.as_view(), name='doc_my_access'),
     path('<int:pk>/accesses/', DocumentAccessListCreateAPIView.as_view(), name='doc_accesses'),
     path('<int:pk>/accesses/<int:access_id>/', DocumentAccessDetailAPIView.as_view(), name='doc_access_detail'),
+    path('<int:pk>/comments/', DocumentCommentsAPIView.as_view(), name='doc_comments'),
+    path('<int:pk>/comments/<int:comment_id>/', DocumentCommentDetailAPIView.as_view(), name='doc_comment_detail'),
 ]

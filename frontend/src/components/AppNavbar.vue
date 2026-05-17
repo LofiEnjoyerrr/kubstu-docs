@@ -19,7 +19,7 @@
         <div class="relative w-7 h-7">
           <img
             v-if="auth.user.avatar"
-            :src="auth.user.avatar"
+            :src="resolveMediaUrl(auth.user.avatar)!"
             :alt="auth.user.username"
             class="w-7 h-7 rounded-full object-cover"
           />
@@ -77,6 +77,7 @@
 import { ref, computed, onMounted, onBeforeUnmount } from 'vue'
 import { useRouter } from 'vue-router'
 import { useAuthStore } from '../stores/auth'
+import { resolveMediaUrl } from '../utils/media'
 
 const auth = useAuthStore()
 const router = useRouter()

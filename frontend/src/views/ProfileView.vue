@@ -17,8 +17,8 @@
           <div class="relative">
             <div class="w-20 h-20 rounded-full overflow-hidden bg-slate-100">
               <img
-                v-if="previewUrl || auth.user?.avatar"
-                :src="previewUrl || auth.user!.avatar!"
+                v-if="resolveMediaUrl(auth.user.avatar)"
+                :src="resolveMediaUrl(auth.user.avatar)!"
                 alt="Avatar"
                 class="w-full h-full object-cover"
               />
@@ -127,6 +127,7 @@
 <script setup lang="ts">
 import { ref, reactive, computed, onMounted } from 'vue'
 import { useAuthStore } from '../stores/auth'
+import { resolveMediaUrl } from '../utils/media'
 
 const auth = useAuthStore()
 const avatarInput = ref<HTMLInputElement | null>(null)

@@ -1,7 +1,7 @@
 from rest_framework import serializers
 from rest_framework.exceptions import ValidationError
 
-from docs.models import Document, DocumentAccess
+from docs.models import Document, DocumentAccess, Comment
 from users.models import User
 
 
@@ -94,3 +94,31 @@ class PatchDocumentAccessSerializer(serializers.ModelSerializer):
 
 class MyAccessSerializer(serializers.Serializer):
     role = serializers.CharField()
+
+
+class CommentSerializer(serializers.ModelSerializer):
+    author_id = serializers.ReadOnlyField(source='author.id')
+    author_username = serializers.ReadOnlyField(source='author.username')
+    author_color = serializers.ReadOnlyField(source='author.color')
+    author_avatar = serializers.ImageField(source='author.avatar', read_only=True)
+
+    class Meta:
+        model = Comment
+        fields = (
+            'id',
+            'author_id',
+            'author_username',
+            'author_color',
+            'author_avatar',
+            'quote',
+            'from_pos',
+            'to_pos',
+            'content',
+            'dt_created',
+        )
+
+
+class CreateCommentSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = Comment
+        fields = ('quote', 'from_pos', 'to_pos', 'content')
