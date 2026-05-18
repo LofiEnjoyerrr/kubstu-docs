@@ -215,10 +215,15 @@ class DocumentConsumer(AsyncWebsocketConsumer):
         await self.send(text_data=json.dumps({
             'type': 'page_layout',
             'page_width': event['page_width'],
+            'page_height': event.get('page_height'),
             'margin_top': event['margin_top'],
             'margin_right': event['margin_right'],
             'margin_bottom': event['margin_bottom'],
             'margin_left': event['margin_left'],
+            'header_content': event.get('header_content', ''),
+            'footer_content': event.get('footer_content', ''),
+            'show_page_numbers': event.get('show_page_numbers', False),
+            'page_number_start': event.get('page_number_start', 1),
         }))
 
     # ------------------------------------------------------------------ helpers

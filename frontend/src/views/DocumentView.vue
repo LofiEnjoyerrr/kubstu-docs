@@ -145,12 +145,18 @@
           :doc-id="docId"
           :doc-title="doc?.title"
           :page-layout="pageLayout"
+          :header-content="headerContent"
+          :footer-content="footerContent"
+          :show-page-numbers="showPageNumbers"
+          :page-number-start="pageNumberStart"
           class="flex-1 min-w-0"
           @update:model-value="onEditorUpdate"
           @selection-update="onSelectionUpdate"
           @comment-positions-changed="onCommentPositionsChanged"
           @docx-imported="onDocxImported"
           @update-page-layout="onUpdatePageLayout"
+          @update-header-content="onUpdateHeaderContent"
+          @update-footer-content="onUpdateFooterContent"
         />
 
         <Transition name="slide-panel">
@@ -245,12 +251,20 @@ const myRole = ref<'owner' | 'editor' | 'viewer' | null>(null)
 
 const pageLayout = ref<PageLayout>({
   page_width: 816,
+  page_height: 1056,
   margin_top: 96,
   margin_right: 96,
   margin_bottom: 96,
   margin_left: 96,
 })
+const headerContent = ref<string>('')
+const footerContent = ref<string>('')
+const showPageNumbers = ref(false)
+const pageNumberStart = ref(1)
+
 let pageLayoutTimer: ReturnType<typeof setTimeout> | null = null
+let headerSaveTimer: ReturnType<typeof setTimeout> | null = null
+let footerSaveTimer: ReturnType<typeof setTimeout> | null = null
 
 // Comments state
 const comments = ref<Comment[]>([])
@@ -297,14 +311,19 @@ onMounted(async () => {
     doc.value = await docsStore.fetchDocument(docId.value)
     editableTitle.value = doc.value.title
 
-    // Hydrate page layout from the document
+    // Hydrate page layout + header/footer from the document
     pageLayout.value = {
       page_width: doc.value.page_width ?? 816,
+      page_height: doc.value.page_height ?? 1056,
       margin_top: doc.value.margin_top ?? 96,
       margin_right: doc.value.margin_right ?? 96,
       margin_bottom: doc.value.margin_bottom ?? 96,
       margin_left: doc.value.margin_left ?? 96,
     }
+    headerContent.value = doc.value.header_content ?? ''
+    footerContent.value = doc.value.footer_content ?? ''
+    showPageNumbers.value = !!doc.value.show_page_numbers
+    pageNumberStart.value = doc.value.page_number_start ?? 1
 
     try {
       editorContent.value = doc.value.content
@@ -383,8 +402,29 @@ onMounted(async () => {
     })
 
     socket.onPageLayout((layout) => {
-      pageLayout.value = { ...layout }
-      if (doc.value) Object.assign(doc.value, layout)
+      pageLayout.value = {
+        page_width: layout.page_width ?? pageLayout.value.page_width,
+        page_height: layout.page_height ?? pageLayout.value.page_height,
+        margin_top: layout.margin_top ?? pageLayout.value.margin_top,
+        margin_right: layout.margin_right ?? pageLayout.value.margin_right,
+        margin_bottom: layout.margin_bottom ?? pageLayout.value.margin_bottom,
+        margin_left: layout.margin_left ?? pageLayout.value.margin_left,
+      }
+      // Header / footer / numbering are also delivered here.
+      const layoutAny = layout as unknown as Record<string, unknown>
+      if ('header_content' in layoutAny && typeof layoutAny.header_content === 'string') {
+        headerContent.value = layoutAny.header_content
+        editorRef.value?.applyRemoteHeader(parseMaybeJson(layoutAny.header_content))
+      }
+      if ('footer_content' in layoutAny && typeof layoutAny.footer_content === 'string') {
+        footerContent.value = layoutAny.footer_content
+        editorRef.value?.applyRemoteFooter(parseMaybeJson(layoutAny.footer_content))
+      }
+      if ('show_page_numbers' in layoutAny) showPageNumbers.value = !!layoutAny.show_page_numbers
+      if ('page_number_start' in layoutAny && typeof layoutAny.page_number_start === 'number') {
+        pageNumberStart.value = layoutAny.page_number_start
+      }
+      if (doc.value) Object.assign(doc.value, layoutAny)
     })
 
     socket.connect()
@@ -523,25 +563,34 @@ async function syncCommentsToBackend() {
 }
 
 async function onDocxImported(payload: { content: unknown }) {
-  if (!canEdit.value) return
-  // Cancel any pending debounced WS save — we're about to save synchronously
-  // over HTTP so the document is durable BEFORE we let the user reload.
+  // The server already persisted the import + broadcast it over WS. We just
+  // need to re-fetch document metadata so page layout / header / footer
+  // reflect what came out of the DOCX.
   if (contentSaveTimer) clearTimeout(contentSaveTimer)
-
-  const content = payload.content
-  // Reflect locally so the binding is in sync with what we just persisted.
-  editorContent.value = content
   isSaving.value = true
   try {
-    await docsApi.updateDocument(docId.value, {
-      content: typeof content === 'string' ? content : JSON.stringify(content),
-    })
-    // The HTTP PATCH endpoint broadcasts a `full_replace` over WS so any
-    // other connected client picks up the import instantly. We still update
-    // local state via the showSaved() ack.
-    if (doc.value) doc.value.content = typeof content === 'string' ? content : JSON.stringify(content)
+    const fresh = await docsApi.getDocument(docId.value)
+    doc.value = fresh.data
+    pageLayout.value = {
+      page_width: fresh.data.page_width ?? 816,
+      page_height: fresh.data.page_height ?? 1056,
+      margin_top: fresh.data.margin_top ?? 96,
+      margin_right: fresh.data.margin_right ?? 96,
+      margin_bottom: fresh.data.margin_bottom ?? 96,
+      margin_left: fresh.data.margin_left ?? 96,
+    }
+    headerContent.value = fresh.data.header_content ?? ''
+    footerContent.value = fresh.data.footer_content ?? ''
+    showPageNumbers.value = !!fresh.data.show_page_numbers
+    pageNumberStart.value = fresh.data.page_number_start ?? 1
+    editorContent.value = payload.content
+    // Push fresh header/footer JSON into the band editors so their content
+    // matches what was just imported (the WS already does this for OTHER
+    // clients; we apply it locally too for the importer's own view).
+    editorRef.value?.applyRemoteHeader(parseMaybeJson(fresh.data.header_content))
+    editorRef.value?.applyRemoteFooter(parseMaybeJson(fresh.data.footer_content))
   } catch (err) {
-    console.error('Failed to persist DOCX import', err)
+    console.error('Failed to refresh document after import', err)
   } finally {
     isSaving.value = false
     lastSaved.value = true
@@ -549,10 +598,31 @@ async function onDocxImported(payload: { content: unknown }) {
   }
 }
 
-function onUpdatePageLayout(patch: Partial<PageLayout>) {
-  pageLayout.value = { ...pageLayout.value, ...patch }
+function parseMaybeJson(s: string | null | undefined): unknown {
+  if (!s) return null
+  try { return JSON.parse(s) } catch { return null }
+}
+
+function onUpdatePageLayout(patch: Partial<PageLayout> & {
+  header_content?: string
+  footer_content?: string
+  show_page_numbers?: boolean
+  page_number_start?: number
+}) {
+  // Apply optimistically.
+  pageLayout.value = {
+    ...pageLayout.value,
+    ...(patch.page_width !== undefined ? { page_width: patch.page_width } : {}),
+    ...(patch.page_height !== undefined ? { page_height: patch.page_height } : {}),
+    ...(patch.margin_top !== undefined ? { margin_top: patch.margin_top } : {}),
+    ...(patch.margin_right !== undefined ? { margin_right: patch.margin_right } : {}),
+    ...(patch.margin_bottom !== undefined ? { margin_bottom: patch.margin_bottom } : {}),
+    ...(patch.margin_left !== undefined ? { margin_left: patch.margin_left } : {}),
+  }
+  if (patch.show_page_numbers !== undefined) showPageNumbers.value = patch.show_page_numbers
+  if (patch.page_number_start !== undefined) pageNumberStart.value = patch.page_number_start
+
   if (myRole.value !== 'owner') return
-  // Debounce PATCH so dragging a number input doesn't fire on every keystroke.
   if (pageLayoutTimer) clearTimeout(pageLayoutTimer)
   pageLayoutTimer = setTimeout(async () => {
     try {
@@ -562,6 +632,36 @@ function onUpdatePageLayout(patch: Partial<PageLayout>) {
       console.error('Failed to save page layout', err)
     }
   }, 400)
+}
+
+function onUpdateHeaderContent(json: unknown) {
+  if (!canEdit.value) return
+  const serialized = JSON.stringify(json)
+  if (serialized === headerContent.value) return
+  headerContent.value = serialized
+  if (headerSaveTimer) clearTimeout(headerSaveTimer)
+  headerSaveTimer = setTimeout(async () => {
+    try {
+      await docsApi.updateDocument(docId.value, { header_content: serialized })
+    } catch (err) {
+      console.error('Failed to save header', err)
+    }
+  }, 600)
+}
+
+function onUpdateFooterContent(json: unknown) {
+  if (!canEdit.value) return
+  const serialized = JSON.stringify(json)
+  if (serialized === footerContent.value) return
+  footerContent.value = serialized
+  if (footerSaveTimer) clearTimeout(footerSaveTimer)
+  footerSaveTimer = setTimeout(async () => {
+    try {
+      await docsApi.updateDocument(docId.value, { footer_content: serialized })
+    } catch (err) {
+      console.error('Failed to save footer', err)
+    }
+  }, 600)
 }
 
 function showSaved() {

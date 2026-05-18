@@ -9,7 +9,12 @@ type CommentAddCallback = (comment: Comment) => void
 type CommentDeleteCallback = (commentId: number) => void
 type CommentUpdateCallback = (comment: Comment) => void
 type FullReplaceCallback = (data: { content: unknown; version: number; user_id: number | null }) => void
-type PageLayoutCallback = (layout: PageLayout) => void
+type PageLayoutCallback = (layout: PageLayout & {
+  header_content?: string
+  footer_content?: string
+  show_page_numbers?: boolean
+  page_number_start?: number
+}) => void
 
 export function useDocumentSocket(docId: number) {
   const ws = ref<WebSocket | null>(null)
@@ -120,10 +125,15 @@ export function useDocumentSocket(docId: number) {
       case 'page_layout':
         onPageLayoutCb?.({
           page_width: data.page_width as number,
+          page_height: (data.page_height as number) ?? 1056,
           margin_top: data.margin_top as number,
           margin_right: data.margin_right as number,
           margin_bottom: data.margin_bottom as number,
           margin_left: data.margin_left as number,
+          header_content: data.header_content as string | undefined,
+          footer_content: data.footer_content as string | undefined,
+          show_page_numbers: data.show_page_numbers as boolean | undefined,
+          page_number_start: data.page_number_start as number | undefined,
         })
         break
     }

@@ -14,13 +14,21 @@ export interface User {
 
 export interface PageLayout {
   page_width: number
+  page_height: number
   margin_top: number
   margin_right: number
   margin_bottom: number
   margin_left: number
 }
 
-export interface Document extends PageLayout {
+export interface PageSettings {
+  header_content: string
+  footer_content: string
+  show_page_numbers: boolean
+  page_number_start: number
+}
+
+export interface Document extends PageLayout, PageSettings {
   id: number
   title: string
   content: string

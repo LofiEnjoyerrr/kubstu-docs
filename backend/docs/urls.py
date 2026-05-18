@@ -9,6 +9,7 @@ from docs.views import (
     MyDocumentAccessAPIView,
     DocumentsSearchAPIView,
     DocumentImageUploadAPIView,
+    DocumentDocxImportAPIView,
     DocumentCommentsAPIView,
     DocumentCommentDetailAPIView,
 )
@@ -22,6 +23,7 @@ urlpatterns = [
     path('<int:pk>/accesses/', DocumentAccessListCreateAPIView.as_view(), name='doc_accesses'),
     path('<int:pk>/accesses/<int:access_id>/', DocumentAccessDetailAPIView.as_view(), name='doc_access_detail'),
     path('<int:pk>/images/', DocumentImageUploadAPIView.as_view(), name='doc_image_upload'),
+    path('<int:pk>/import-docx/', DocumentDocxImportAPIView.as_view(), name='doc_import_docx'),
     path('<int:pk>/comments/', DocumentCommentsAPIView.as_view(), name='doc_comments'),
     path('<int:pk>/comments/<int:comment_id>/', DocumentCommentDetailAPIView.as_view(), name='doc_comment_detail'),
 ]

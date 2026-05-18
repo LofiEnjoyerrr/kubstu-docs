@@ -27,6 +27,11 @@ class Document(AutoDateMixin):
         db_default=816,
         verbose_name='Ширина страницы (px)',
     )
+    page_height = models.PositiveIntegerField(
+        default=1056,
+        db_default=1056,
+        verbose_name='Высота страницы (px)',
+    )
     margin_top = models.PositiveIntegerField(
         default=96,
         db_default=96,
@@ -46,6 +51,30 @@ class Document(AutoDateMixin):
         default=96,
         db_default=96,
         verbose_name='Левый отступ (px)',
+    )
+
+    # Headers / footers store Tiptap JSON. Empty string means "no header/footer".
+    header_content = models.TextField(
+        blank=True,
+        default='',
+        db_default='',
+        verbose_name='Колонтитул сверху (JSON)',
+    )
+    footer_content = models.TextField(
+        blank=True,
+        default='',
+        db_default='',
+        verbose_name='Колонтитул снизу (JSON)',
+    )
+    show_page_numbers = models.BooleanField(
+        default=False,
+        db_default=False,
+        verbose_name='Показывать номера страниц',
+    )
+    page_number_start = models.PositiveIntegerField(
+        default=1,
+        db_default=1,
+        verbose_name='Начальный номер страницы',
     )
 
     owner = models.ForeignKey(

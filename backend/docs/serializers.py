@@ -19,10 +19,15 @@ class GetDocumentSerializer(serializers.ModelSerializer):
             'owner',
             'owner_id',
             'page_width',
+            'page_height',
             'margin_top',
             'margin_right',
             'margin_bottom',
             'margin_left',
+            'header_content',
+            'footer_content',
+            'show_page_numbers',
+            'page_number_start',
             'dt_created',
             'dt_updated',
         )
@@ -48,25 +53,45 @@ class PatchDocumentSerializer(serializers.ModelSerializer):
             'content',
             'is_public',
             'page_width',
+            'page_height',
             'margin_top',
             'margin_right',
             'margin_bottom',
             'margin_left',
+            'header_content',
+            'footer_content',
+            'show_page_numbers',
+            'page_number_start',
         )
         extra_kwargs = {
             'title': {'required': False},
             'content': {'required': False},
             'is_public': {'required': False},
             'page_width': {'required': False},
+            'page_height': {'required': False},
             'margin_top': {'required': False},
             'margin_right': {'required': False},
             'margin_bottom': {'required': False},
             'margin_left': {'required': False},
+            'header_content': {'required': False},
+            'footer_content': {'required': False},
+            'show_page_numbers': {'required': False},
+            'page_number_start': {'required': False},
         }
 
     def validate_page_width(self, v):
         if v < 320 or v > 2400:
             raise ValidationError('Ширина страницы должна быть от 320 до 2400 px')
+        return v
+
+    def validate_page_height(self, v):
+        if v < 320 or v > 3600:
+            raise ValidationError('Высота страницы должна быть от 320 до 3600 px')
+        return v
+
+    def validate_page_number_start(self, v):
+        if v < 1 or v > 99999:
+            raise ValidationError('Номер первой страницы должен быть от 1 до 99999')
         return v
 
     def _validate_margin(self, v):

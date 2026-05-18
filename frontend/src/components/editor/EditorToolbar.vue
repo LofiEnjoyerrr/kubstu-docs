@@ -1,6 +1,6 @@
 <template>
   <div class="border-b border-slate-200 bg-white select-none">
-    <!-- ── Row 1: file actions + history + find ─────────────────── -->
+    <!-- ── Row 1: file / history / find / page-setup ────────────────────────── -->
     <div class="flex flex-wrap items-center gap-0.5 px-2 py-1 border-b border-slate-100">
       <Btn title="Undo (Ctrl+Z)" @click="editor.chain().focus().undo().run()">
         <svg class="w-4 h-4" fill="currentColor" viewBox="0 0 24 24"><path d="M12.5 8c-2.65 0-5.05.99-6.9 2.6L2 7v9h9l-3.62-3.62c1.39-1.16 3.16-1.88 5.12-1.88 3.54 0 6.55 2.31 7.6 5.5l2.37-.78C21.08 11.03 17.15 8 12.5 8z"/></svg>
@@ -11,7 +11,7 @@
 
       <Sep />
 
-      <Btn title="Clear formatting" @click="editor.chain().focus().clearNodes().unsetAllMarks().run()">
+      <Btn title="Clear formatting" @click="editor.chain().focus().clearNodes().unsetAllMarks().resetParagraphSpacing().run()">
         <svg class="w-4 h-4" fill="currentColor" viewBox="0 0 24 24"><path d="M3.27 5L2 6.27l6.97 6.97L6.5 19h3l1.57-3.66L16.73 21 18 19.73 3.55 5.27 3.27 5zM6 5v.18l3 3V7h2v2.18l1.78 1.78L13.4 7H20V5H6z"/></svg>
       </Btn>
 
@@ -23,7 +23,7 @@
 
       <Sep />
 
-      <!-- ── DOCX import / export ──────────────────────────────────── -->
+      <!-- DOCX import / export -->
       <input
         ref="docxInputRef"
         type="file"
@@ -31,7 +31,7 @@
         class="sr-only"
         @change="onDocxImport"
       />
-      <Btn title="Import DOCX" :disabled="isImporting" @click="docxInputRef?.click()">
+      <Btn title="Import DOCX" :disabled="isImporting || !docId" @click="docxInputRef?.click()">
         <svg v-if="!isImporting" class="w-4 h-4" fill="currentColor" viewBox="0 0 24 24"><path d="M19 9h-4V3H9v6H5l7 7 7-7zM5 18v2h14v-2H5z"/></svg>
         <svg v-else class="w-4 h-4 animate-spin" fill="none" viewBox="0 0 24 24"><circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"/><path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8H4z"/></svg>
       </Btn>
@@ -42,17 +42,31 @@
 
       <Sep />
 
-      <!-- ── Page layout ───────────────────────────────────────────── -->
-      <Btn title="Page setup" :active="showPageSetup" @click="showPageSetup = !showPageSetup">
+      <!-- Page layout / paragraph / header-footer popovers -->
+      <Btn title="Page setup" :active="popover === 'page'" @click="togglePop('page')">
         <svg class="w-4 h-4" fill="currentColor" viewBox="0 0 24 24"><path d="M6 2c-1.1 0-2 .9-2 2v16c0 1.1.9 2 2 2h12c1.1 0 2-.9 2-2V8l-6-6H6zm7 7V3.5L18.5 9H13z"/></svg>
+      </Btn>
+      <Btn title="Paragraph spacing" :active="popover === 'para'" @click="togglePop('para')">
+        <svg class="w-4 h-4" fill="currentColor" viewBox="0 0 24 24"><path d="M3 5h18v2H3zm0 6h12v2H3zm0 6h18v2H3z"/></svg>
+      </Btn>
+      <Btn title="Header / footer" :active="popover === 'hf'" @click="togglePop('hf')">
+        <svg class="w-4 h-4" fill="currentColor" viewBox="0 0 24 24"><path d="M4 3h16v3H4zm0 5h16v8H4zm0 10h16v3H4z"/></svg>
+      </Btn>
+
+      <Sep />
+
+      <Btn title="Insert page break (Ctrl+Enter)" :disabled="!editor" @click="insertPageBreak">
+        <svg class="w-4 h-4" fill="currentColor" viewBox="0 0 24 24"><path d="M9 4H5v4h4V4zm0 12H5v4h4v-4zm6-12h-4v4h4V4zm0 12h-4v4h4v-4zM5 10h14v2H5z"/></svg>
+      </Btn>
+      <Btn title="Insert page number" :disabled="!editor" @click="editor.chain().focus().insertPageNumber().run()">
+        <svg class="w-4 h-4" fill="currentColor" viewBox="0 0 24 24"><path d="M6 4h2v16H6zm10 0c2 0 3 1.5 3 4 0 1.5-1 2.5-2 3v.5c1 .5 2 1.5 2 3 0 2.5-1 4.5-3 4.5h-3v-2h3c.5 0 1-1 1-2.5s-.5-2-1-2h-2v-2h2c.5 0 1-.5 1-2s-.5-2-1-2h-3V4h3z"/></svg>
       </Btn>
 
       <span v-if="importError" class="text-xs text-red-500 ml-2">{{ importError }}</span>
     </div>
 
-    <!-- ── Row 2: formatting toolbar ────────────────────────────── -->
+    <!-- ── Row 2: formatting toolbar ────────────────────────────────────────── -->
     <div class="flex flex-wrap items-center gap-0.5 px-2 py-1">
-      <!-- Font family -->
       <select
         :value="currentFontFamily"
         class="toolbar-select w-36"
@@ -63,7 +77,6 @@
         <option v-for="f in FONTS" :key="f" :value="f" :style="{ fontFamily: f }">{{ f }}</option>
       </select>
 
-      <!-- Font size -->
       <select
         :value="currentFontSize"
         class="toolbar-select w-16"
@@ -76,7 +89,6 @@
 
       <Sep />
 
-      <!-- Block style -->
       <select :value="currentHeading" class="toolbar-select w-28" @change="setHeading">
         <option value="0">Paragraph</option>
         <option value="1">Heading 1</option>
@@ -89,7 +101,6 @@
 
       <Sep />
 
-      <!-- Inline formatting -->
       <Btn :active="editor.isActive('bold')"      title="Bold (Ctrl+B)"      @click="editor.chain().focus().toggleBold().run()">
         <svg class="w-4 h-4" fill="currentColor" viewBox="0 0 24 24"><path d="M15.6 11.8A4 4 0 0013 5H7v14h6.5a4.5 4.5 0 002.1-8.2zM9 7h4a2 2 0 010 4H9V7zm4.5 10H9v-4h4.5a2.5 2.5 0 010 5z"/></svg>
       </Btn>
@@ -105,14 +116,9 @@
       <Btn :active="editor.isActive('code')"      title="Inline code"        @click="editor.chain().focus().toggleCode().run()">
         <svg class="w-4 h-4" fill="currentColor" viewBox="0 0 24 24"><path d="M9.4 16.6L4.8 12l4.6-4.6L8 6l-6 6 6 6 1.4-1.4zm5.2 0l4.6-4.6-4.6-4.6L16 6l6 6-6 6-1.4-1.4z"/></svg>
       </Btn>
-      <Btn :active="editor.isActive('subscript')" title="Subscript" @click="editor.chain().focus().toggleSubscript().run()">
-        <svg class="w-4 h-4" fill="currentColor" viewBox="0 0 24 24"><path d="M16 7.41 11.41 12 16 16.59 14.59 18 10 13.41 5.41 18 4 16.59 8.59 12 4 7.41 5.41 6 10 10.59 14.59 6 16 7.41zm5 11.59h-2.5a.5.5 0 0 1 0-1H20v-.5a.5.5 0 0 0-.5-.5h-1a.5.5 0 0 1 0-1h1A1.5 1.5 0 0 1 21 17.5v.25a1.25 1.25 0 0 1-1.25 1.25z"/></svg>
-      </Btn>
-      <Btn :active="editor.isActive('superscript')" title="Superscript" @click="editor.chain().focus().toggleSuperscript().run()">
-        <svg class="w-4 h-4" fill="currentColor" viewBox="0 0 24 24"><path d="M16 14.41 11.41 19 16 23.59 14.59 25 10 20.41 5.41 25 4 23.59 8.59 19 4 14.41 5.41 13 10 17.59 14.59 13 16 14.41z" transform="translate(0,-4)"/><path d="M19 7h-1.5a.5.5 0 0 1 0-1H18v-.5a.5.5 0 0 0-.5-.5h-1a.5.5 0 0 1 0-1h1A1.5 1.5 0 0 1 19 5.5v.25A1.25 1.25 0 0 1 17.75 7H19z"/></svg>
-      </Btn>
+      <Btn :active="editor.isActive('subscript')" title="Subscript" @click="editor.chain().focus().toggleSubscript().run()">x₂</Btn>
+      <Btn :active="editor.isActive('superscript')" title="Superscript" @click="editor.chain().focus().toggleSuperscript().run()">x²</Btn>
 
-      <!-- Text color -->
       <label class="w-7 h-7 flex items-center justify-center rounded cursor-pointer hover:bg-slate-100 transition-colors relative" title="Text color">
         <span class="flex flex-col items-center gap-px">
           <span class="text-[11px] font-bold text-slate-700 leading-none">A</span>
@@ -121,7 +127,6 @@
         <input type="color" :value="currentColor" class="absolute inset-0 opacity-0 cursor-pointer w-full h-full" @input="e => applyColor((e.target as HTMLInputElement).value)" />
       </label>
 
-      <!-- Highlight color -->
       <label class="w-7 h-7 flex items-center justify-center rounded cursor-pointer hover:bg-slate-100 transition-colors relative" title="Highlight color">
         <span class="flex flex-col items-center gap-px">
           <svg class="w-3.5 h-3.5 text-slate-700" fill="currentColor" viewBox="0 0 24 24"><path d="M6 14l3 3v5h6v-5l3-3V9H6v5zM11 3h2v6h-2z"/></svg>
@@ -135,7 +140,6 @@
 
       <Sep />
 
-      <!-- Alignment -->
       <Btn :active="editor.isActive({ textAlign: 'left' })"    title="Align left"   @click="editor.chain().focus().setTextAlign('left').run()">
         <svg class="w-4 h-4" fill="currentColor" viewBox="0 0 24 24"><path d="M15 15H3v2h12v-2zm0-8H3v2h12V7zM3 13h18v-2H3v2zm0 8h18v-2H3v2zM3 3v2h18V3H3z"/></svg>
       </Btn>
@@ -149,7 +153,6 @@
         <svg class="w-4 h-4" fill="currentColor" viewBox="0 0 24 24"><path d="M3 21h18v-2H3v2zm0-4h18v-2H3v2zm0-4h18v-2H3v2zm0-4h18V7H3v2zm0-6v2h18V3H3z"/></svg>
       </Btn>
 
-      <!-- Line height -->
       <select
         :value="currentLineHeight"
         class="toolbar-select w-20"
@@ -162,7 +165,6 @@
 
       <Sep />
 
-      <!-- Lists + indent -->
       <Btn :active="editor.isActive('bulletList')"  title="Bullet list"                @click="editor.chain().focus().toggleBulletList().run()">
         <svg class="w-4 h-4" fill="currentColor" viewBox="0 0 24 24"><path d="M4 10.5c-.83 0-1.5.67-1.5 1.5s.67 1.5 1.5 1.5 1.5-.67 1.5-1.5-.67-1.5-1.5-1.5zm0-6c-.83 0-1.5.67-1.5 1.5S3.17 7.5 4 7.5 5.5 6.83 5.5 6 4.83 4.5 4 4.5zm0 12c-.83 0-1.5.68-1.5 1.5s.68 1.5 1.5 1.5 1.5-.68 1.5-1.5-.67-1.5-1.5-1.5zM7 19h14v-2H7v2zm0-6h14v-2H7v2zm0-8v2h14V5H7z"/></svg>
       </Btn>
@@ -181,7 +183,6 @@
 
       <Sep />
 
-      <!-- Block elements -->
       <Btn :active="editor.isActive('blockquote')" title="Blockquote" @click="editor.chain().focus().toggleBlockquote().run()">
         <svg class="w-4 h-4" fill="currentColor" viewBox="0 0 24 24"><path d="M6 17h3l2-4V7H5v6h3zm8 0h3l2-4V7h-6v6h3z"/></svg>
       </Btn>
@@ -194,7 +195,6 @@
 
       <Sep />
 
-      <!-- Link -->
       <Btn :active="editor.isActive('link')" title="Insert link" @click="onInsertLink">
         <svg class="w-4 h-4" fill="currentColor" viewBox="0 0 24 24"><path d="M3.9 12c0-1.71 1.39-3.1 3.1-3.1h4V7H7c-2.76 0-5 2.24-5 5s2.24 5 5 5h4v-1.9H7c-1.71 0-3.1-1.39-3.1-3.1zM8 13h8v-2H8v2zm9-6h-4v1.9h4c1.71 0 3.1 1.39 3.1 3.1s-1.39 3.1-3.1 3.1h-4V17h4c2.76 0 5-2.24 5-5s-2.24-5-5-5z"/></svg>
       </Btn>
@@ -202,7 +202,6 @@
         <svg class="w-4 h-4" fill="currentColor" viewBox="0 0 24 24"><path d="M14.39 11l2-2H17a3 3 0 0 1 0 6h-2v2h2a5 5 0 0 0 5-5 5 5 0 0 0-5-5h-3.61l1 1zM2.83 2.41 1.41 3.83l4.66 4.66A5 5 0 0 0 7 17h3v-2H7a3 3 0 0 1 0-6h.17l8 8 1.42-1.41L2.83 2.41z"/></svg>
       </Btn>
 
-      <!-- Image -->
       <input ref="imageInputRef" type="file" accept="image/*" class="sr-only" @change="onImageSelected" />
       <Btn title="Insert image" @click="imageInputRef?.click()">
         <svg class="w-4 h-4" fill="currentColor" viewBox="0 0 24 24"><path d="M21 19V5c0-1.1-.9-2-2-2H5c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h14c1.1 0 2-.9 2-2zM8.5 13.5l2.5 3.01L14.5 12l4.5 6H5l3.5-4.5z"/></svg>
@@ -210,7 +209,6 @@
 
       <Sep />
 
-      <!-- Table -->
       <Btn title="Insert table" @click="editor.chain().focus().insertTable({ rows: 3, cols: 3, withHeaderRow: true }).run()">
         <svg class="w-4 h-4" fill="currentColor" viewBox="0 0 24 24"><path d="M3 3h18v18H3V3zm2 4v3h6V7H5zm0 5v3h6v-3H5zm0 5v2h6v-2H5zm8-10v3h6V7h-6zm0 5v3h6v-3h-6zm0 5v2h6v-2h-6z"/></svg>
       </Btn>
@@ -232,50 +230,55 @@
     </div>
 
     <!-- Page setup popover -->
-    <div v-if="showPageSetup" class="px-4 py-3 border-t border-slate-100 bg-slate-50 flex flex-wrap items-end gap-4 text-xs">
-      <div class="flex flex-col gap-1">
-        <label class="text-slate-600 font-medium">Page width (px)</label>
-        <input
-          type="number"
-          min="320" max="2400" step="8"
-          class="input w-28 h-8"
-          :value="pageLayout.page_width"
-          @change="e => updateLayout({ page_width: clamp((e.target as HTMLInputElement).valueAsNumber, 320, 2400) })"
-        />
-      </div>
-      <div class="flex flex-col gap-1">
-        <label class="text-slate-600 font-medium">Margin top</label>
-        <input type="number" min="0" max="600" step="4" class="input w-20 h-8"
-          :value="pageLayout.margin_top"
-          @change="e => updateLayout({ margin_top: clamp((e.target as HTMLInputElement).valueAsNumber, 0, 600) })"
-        />
-      </div>
-      <div class="flex flex-col gap-1">
-        <label class="text-slate-600 font-medium">Margin right</label>
-        <input type="number" min="0" max="600" step="4" class="input w-20 h-8"
-          :value="pageLayout.margin_right"
-          @change="e => updateLayout({ margin_right: clamp((e.target as HTMLInputElement).valueAsNumber, 0, 600) })"
-        />
-      </div>
-      <div class="flex flex-col gap-1">
-        <label class="text-slate-600 font-medium">Margin bottom</label>
-        <input type="number" min="0" max="600" step="4" class="input w-20 h-8"
-          :value="pageLayout.margin_bottom"
-          @change="e => updateLayout({ margin_bottom: clamp((e.target as HTMLInputElement).valueAsNumber, 0, 600) })"
-        />
-      </div>
-      <div class="flex flex-col gap-1">
-        <label class="text-slate-600 font-medium">Margin left</label>
-        <input type="number" min="0" max="600" step="4" class="input w-20 h-8"
-          :value="pageLayout.margin_left"
-          @change="e => updateLayout({ margin_left: clamp((e.target as HTMLInputElement).valueAsNumber, 0, 600) })"
-        />
-      </div>
+    <div v-if="popover === 'page'" class="px-4 py-3 border-t border-slate-100 bg-slate-50 flex flex-wrap items-end gap-4 text-xs">
+      <NumberField label="Width (px)" :value="pageLayout.page_width" :min="320" :max="2400" @change="v => updateLayout({ page_width: v })" />
+      <NumberField label="Height (px)" :value="pageLayout.page_height" :min="320" :max="3600" @change="v => updateLayout({ page_height: v })" />
+      <NumberField label="Margin top"    :value="pageLayout.margin_top"    :min="0" :max="600" @change="v => updateLayout({ margin_top: v })" />
+      <NumberField label="Margin right"  :value="pageLayout.margin_right"  :min="0" :max="600" @change="v => updateLayout({ margin_right: v })" />
+      <NumberField label="Margin bottom" :value="pageLayout.margin_bottom" :min="0" :max="600" @change="v => updateLayout({ margin_bottom: v })" />
+      <NumberField label="Margin left"   :value="pageLayout.margin_left"   :min="0" :max="600" @change="v => updateLayout({ margin_left: v })" />
       <div class="flex gap-2 ml-auto">
         <button type="button" class="btn-secondary btn-sm" @click="setPreset('a4')">A4</button>
         <button type="button" class="btn-secondary btn-sm" @click="setPreset('letter')">Letter</button>
         <button type="button" class="btn-secondary btn-sm" @click="setPreset('wide')">Wide</button>
       </div>
+    </div>
+
+    <!-- Paragraph spacing popover -->
+    <div v-if="popover === 'para'" class="px-4 py-3 border-t border-slate-100 bg-slate-50 flex flex-wrap items-end gap-4 text-xs">
+      <PxField label="Margin top"    :value="paragraphAttrs.marginTop"    @change="v => $emit('setParagraphAttr', 'marginTop', v)" />
+      <PxField label="Margin bottom" :value="paragraphAttrs.marginBottom" @change="v => $emit('setParagraphAttr', 'marginBottom', v)" />
+      <PxField label="Indent left"   :value="paragraphAttrs.marginLeft"   @change="v => $emit('setParagraphAttr', 'marginLeft', v)" />
+      <PxField label="Indent right"  :value="paragraphAttrs.marginRight"  @change="v => $emit('setParagraphAttr', 'marginRight', v)" />
+      <PxField label="First-line indent" :value="paragraphAttrs.textIndent" @change="v => $emit('setParagraphAttr', 'textIndent', v)" />
+      <button type="button" class="btn-ghost btn-sm" @click="resetParagraph">Reset paragraph</button>
+    </div>
+
+    <!-- Header / footer / page-number controls popover -->
+    <div v-if="popover === 'hf'" class="px-4 py-3 border-t border-slate-100 bg-slate-50 flex flex-wrap items-end gap-4 text-xs">
+      <button type="button" class="btn-secondary btn-sm" @click="$emit('toggleHeader')">
+        {{ headerActive ? 'Close header' : 'Edit header' }}
+      </button>
+      <button type="button" class="btn-secondary btn-sm" @click="$emit('toggleFooter')">
+        {{ footerActive ? 'Close footer' : 'Edit footer' }}
+      </button>
+      <label class="flex items-center gap-1 text-slate-600">
+        <input
+          type="checkbox"
+          :checked="showPageNumbers"
+          @change="e => $emit('setPageNumbers', (e.target as HTMLInputElement).checked)"
+        />
+        Show page numbers
+      </label>
+      <NumberField label="Start at page" :value="pageNumberStart" :min="1" :max="99999" @change="v => $emit('setPageNumberStart', v)" />
+      <button
+        type="button"
+        class="btn-secondary btn-sm"
+        title="Restart page numbering at current cursor"
+        @click="insertRestartBreak"
+      >
+        Insert "restart page #" break
+      </button>
     </div>
 
     <!-- Find &amp; replace bar -->
@@ -314,10 +317,9 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed, defineComponent, h, watch, onMounted, onBeforeUnmount } from 'vue'
+import { ref, computed, defineComponent, h, onMounted, onBeforeUnmount } from 'vue'
 import type { Editor } from '@tiptap/vue-3'
 import apiClient from '../../api/client'
-import { resolveMediaUrl } from '../../utils/media'
 import { findReplaceKey } from './FindReplace'
 import type { PageLayout } from '../../types'
 
@@ -326,11 +328,34 @@ const props = defineProps<{
   docId?: number
   docTitle?: string
   pageLayout: PageLayout
+  showPageNumbers?: boolean
+  pageNumberStart?: number
+  headerActive?: boolean
+  footerActive?: boolean
+  /** Tiptap JSON for the header band (or empty doc). */
+  headerJson?: unknown
+  /** Tiptap JSON for the footer band (or empty doc). */
+  footerJson?: unknown
+  paragraphAttrs: {
+    marginTop: string
+    marginBottom: string
+    marginLeft: string
+    marginRight: string
+    textIndent: string
+  }
 }>()
 
 const emit = defineEmits<{
   docxImported: [payload: { content: unknown }]
-  updatePageLayout: [layout: Partial<PageLayout>]
+  updatePageLayout: [layout: Partial<PageLayout> & {
+    show_page_numbers?: boolean
+    page_number_start?: number
+  }]
+  toggleHeader: []
+  toggleFooter: []
+  setPageNumbers: [v: boolean]
+  setPageNumberStart: [v: number]
+  setParagraphAttr: [which: 'marginTop' | 'marginRight' | 'marginBottom' | 'marginLeft' | 'textIndent', value: string]
 }>()
 
 // ── constants ─────────────────────────────────────────────────────────────────
@@ -353,21 +378,18 @@ const isImporting   = ref(false)
 const isExporting   = ref(false)
 const importError   = ref('')
 
-const showPageSetup = ref(false)
+const popover = ref<'' | 'page' | 'para' | 'hf'>('')
 
 const showFind = ref(false)
 const findQuery = ref('')
 const replaceText = ref('')
 const caseSensitive = ref(false)
-
-// We mirror the plugin's results into refs so the toolbar can render counters.
 const findResults = ref<Array<{ from: number; to: number }>>([])
 const findActive = ref(-1)
 
 let unbindEditorUpdate: (() => void) | null = null
 
 onMounted(() => {
-  // Pull results from the FindReplace plugin every transaction.
   const handler = () => {
     const s = findReplaceKey.getState(props.editor.state)
     if (s) {
@@ -387,30 +409,22 @@ onBeforeUnmount(() => {
 })
 
 function onGlobalKeydown(e: KeyboardEvent) {
-  // Open find with Ctrl+F (or Cmd+F)
   if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'f') {
     e.preventDefault()
     toggleFind()
   }
 }
 
+function togglePop(name: 'page' | 'para' | 'hf') {
+  popover.value = popover.value === name ? '' : name
+}
+
 // ── computed from editor state ────────────────────────────────────────────────
 
-const currentFontFamily = computed(() =>
-  props.editor.getAttributes('textStyle').fontFamily ?? '',
-)
-
-const currentFontSize = computed(() =>
-  props.editor.getAttributes('textStyle').fontSize ?? '',
-)
-
-const currentColor = computed(() =>
-  props.editor.getAttributes('textStyle').color ?? '#000000',
-)
-
-const currentHighlight = computed(() =>
-  props.editor.getAttributes('highlight').color ?? '',
-)
+const currentFontFamily = computed(() => props.editor.getAttributes('textStyle').fontFamily ?? '')
+const currentFontSize = computed(() => props.editor.getAttributes('textStyle').fontSize ?? '')
+const currentColor = computed(() => props.editor.getAttributes('textStyle').color ?? '#000000')
+const currentHighlight = computed(() => props.editor.getAttributes('highlight').color ?? '')
 
 const currentHeading = computed(() => {
   for (let lvl = 1; lvl <= 6; lvl++) {
@@ -426,26 +440,24 @@ const currentLineHeight = computed(() => {
   return fromBlock ?? ''
 })
 
+const paragraphAttrs = computed(() => props.paragraphAttrs)
+
 // ── formatting commands ───────────────────────────────────────────────────────
 
 function applyFontFamily(value: string) {
   if (value) props.editor.chain().focus().setFontFamily(value).run()
   else props.editor.chain().focus().unsetFontFamily().run()
 }
-
 function applyFontSize(value: string) {
   if (value) props.editor.chain().focus().setFontSize(value).run()
   else props.editor.chain().focus().unsetFontSize().run()
 }
-
 function applyColor(value: string) {
   props.editor.chain().focus().setColor(value).run()
 }
-
 function applyHighlight(value: string) {
   props.editor.chain().focus().setHighlight({ color: value }).run()
 }
-
 function applyLineHeight(value: string) {
   if (value) props.editor.chain().focus().setLineHeight(value).run()
   else props.editor.chain().focus().unsetLineHeight().run()
@@ -463,7 +475,7 @@ function setHeading(e: Event) {
 function onInsertLink() {
   const current = props.editor.getAttributes('link').href ?? ''
   const url = window.prompt('Enter URL', current)
-  if (url === null) return // canceled
+  if (url === null) return
   if (url === '') {
     props.editor.chain().focus().unsetLink().run()
     return
@@ -473,23 +485,35 @@ function onInsertLink() {
 
 // ── page layout ───────────────────────────────────────────────────────────────
 
-function clamp(n: number, lo: number, hi: number): number {
-  if (isNaN(n)) return lo
-  return Math.min(hi, Math.max(lo, n))
-}
-
 function updateLayout(patch: Partial<PageLayout>) {
   emit('updatePageLayout', patch)
 }
 
 function setPreset(name: 'a4' | 'letter' | 'wide') {
   if (name === 'a4') {
-    updateLayout({ page_width: 794, margin_top: 96, margin_right: 96, margin_bottom: 96, margin_left: 96 })
+    updateLayout({ page_width: 794, page_height: 1123, margin_top: 96, margin_right: 96, margin_bottom: 96, margin_left: 96 })
   } else if (name === 'letter') {
-    updateLayout({ page_width: 816, margin_top: 96, margin_right: 96, margin_bottom: 96, margin_left: 96 })
+    updateLayout({ page_width: 816, page_height: 1056, margin_top: 96, margin_right: 96, margin_bottom: 96, margin_left: 96 })
   } else {
-    updateLayout({ page_width: 1120, margin_top: 64, margin_right: 96, margin_bottom: 64, margin_left: 96 })
+    updateLayout({ page_width: 1120, page_height: 1400, margin_top: 64, margin_right: 96, margin_bottom: 64, margin_left: 96 })
   }
+}
+
+// ── paragraph / page break ────────────────────────────────────────────────────
+
+function resetParagraph() {
+  props.editor.chain().focus().resetParagraphSpacing().run()
+}
+
+function insertPageBreak() {
+  props.editor.chain().focus().insertPageBreak().run()
+}
+
+function insertRestartBreak() {
+  const startAtStr = window.prompt('Restart page numbering at:', '1')
+  if (startAtStr === null) return
+  const startAt = parseInt(startAtStr, 10)
+  props.editor.chain().focus().insertPageBreakResetNumbering(isNaN(startAt) ? 1 : startAt).run()
 }
 
 // ── find &amp; replace ─────────────────────────────────────────────────────────
@@ -497,7 +521,6 @@ function setPreset(name: 'a4' | 'letter' | 'wide') {
 function toggleFind() {
   showFind.value = !showFind.value
   if (showFind.value) {
-    // Trigger a refresh next tick so the input mounts before focus.
     setTimeout(() => onFindInput(), 0)
   } else {
     props.editor.commands.clearSearch()
@@ -507,7 +530,6 @@ function toggleFind() {
 function onFindInput() {
   props.editor.commands.setSearch(findQuery.value, caseSensitive.value)
 }
-
 function goNext() { props.editor.commands.gotoNextMatch() }
 function goPrev() { props.editor.commands.gotoPrevMatch() }
 function doReplace() { props.editor.commands.replaceCurrent(replaceText.value) }
@@ -528,6 +550,8 @@ async function onImageSelected(e: Event) {
       formData,
       { headers: { 'Content-Type': 'multipart/form-data' } },
     )
+    // resolveMediaUrl applies API base when the URL is relative.
+    const { resolveMediaUrl } = await import('../../utils/media')
     const src = resolveMediaUrl(data.url) ?? data.url
     props.editor.chain().focus().setImage({ src }).run()
   } catch (err) {
@@ -535,130 +559,42 @@ async function onImageSelected(e: Event) {
   }
 }
 
-// ── DOCX ──────────────────────────────────────────────────────────────────────
-
-function normalizeMammothHtml(html: string): string {
-  try {
-    const parser = new DOMParser()
-    const doc = parser.parseFromString(html, 'text/html')
-
-    doc.querySelectorAll('p, h1, h2, h3, h4, h5, h6, li, blockquote').forEach(rawEl => {
-      const el = rawEl as HTMLElement
-      const alignAttr = el.getAttribute('align')
-      if (alignAttr) {
-        if (!el.style.textAlign) el.style.textAlign = alignAttr
-        el.removeAttribute('align')
-      }
-      const ta = el.style.textAlign
-      if (ta && ta !== 'left') {
-        el.style.textAlign = ta
-      }
-    })
-
-    return doc.body.innerHTML
-  } catch {
-    return html
-  }
-}
-
-/**
- * Walk a Tiptap JSON tree, upload every base64 image to the backend and
- * replace its `src` with the returned media URL. Mutates `node` in place.
- */
-async function uploadInlineBase64Images(node: any): Promise<void> {
-  if (!props.docId) return
-  if (!node || typeof node !== 'object') return
-
-  if (node.type === 'image' && typeof node.attrs?.src === 'string') {
-    const src = node.attrs.src as string
-    if (src.startsWith('data:')) {
-      try {
-        const [, mime, base64] = /^data:([^;]+);base64,(.*)$/.exec(src) ?? []
-        if (mime && base64) {
-          const bin = atob(base64)
-          const bytes = new Uint8Array(bin.length)
-          for (let i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i)
-          const ext = (mime.split('/')[1] || 'png').split('+')[0]
-          const file = new File([bytes], `import-${Date.now()}.${ext}`, { type: mime })
-          const fd = new FormData()
-          fd.append('image', file)
-          const { data } = await apiClient.post<{ url: string }>(
-            `/api/docs/${props.docId}/images/`,
-            fd,
-            { headers: { 'Content-Type': 'multipart/form-data' } },
-          )
-          node.attrs.src = resolveMediaUrl(data.url) ?? data.url
-        }
-      } catch (e) {
-        // Leave the base64 as-is — it still renders, just bloats storage.
-        console.warn('Failed to externalize imported image', e)
-      }
-    }
-  }
-
-  if (Array.isArray(node.content)) {
-    for (const child of node.content) {
-      await uploadInlineBase64Images(child)
-    }
-  }
-}
+// ── DOCX import (server-side) ─────────────────────────────────────────────────
 
 async function onDocxImport(e: Event) {
   const file = (e.target as HTMLInputElement).files?.[0]
   if (!file) return
   if (docxInputRef.value) docxInputRef.value.value = ''
+  if (!props.docId) {
+    importError.value = 'Document must be saved before importing.'
+    return
+  }
 
   isImporting.value = true
   importError.value = ''
   try {
-    const mammoth = await import('mammoth')
-    const arrayBuffer = await file.arrayBuffer()
-
-    const result = await mammoth.convertToHtml(
-      { arrayBuffer },
-      {
-        convertImage: mammoth.images.imgElement((image: any) =>
-          image.read('base64').then((data: string) => ({
-            src: `data:${image.contentType};base64,${data}`,
-          })),
-        ),
-        styleMap: [
-          "p[style-name='Heading 1'] => h1:fresh",
-          "p[style-name='Heading 2'] => h2:fresh",
-          "p[style-name='Heading 3'] => h3:fresh",
-          "p[style-name='Heading 4'] => h4:fresh",
-          "p[style-name='Heading 5'] => h5:fresh",
-          "p[style-name='Heading 6'] => h6:fresh",
-          "p[style-name='Quote']         => blockquote > p:fresh",
-          "p[style-name='Intense Quote'] => blockquote > p:fresh",
-          "r[style-name='Strong']    => strong",
-          "r[style-name='Emphasis']  => em",
-          "r[style-name='Underline'] => u",
-          "r[style-name='Strikethrough'] => s",
-          "p[style-name='List Paragraph'] => li:fresh",
-          "p[style-name='Code'] => pre > code:fresh",
-        ],
-      },
+    const formData = new FormData()
+    formData.append('file', file)
+    // The backend parses the DOCX, rewrites the document, broadcasts a
+    // full_replace over the WS and returns the updated record. We hand
+    // the resulting content up to DocumentView so it can update local
+    // state without waiting for the WS round-trip.
+    const { data } = await apiClient.post<{ content: string }>(
+      `/api/docs/${props.docId}/import-docx/`,
+      formData,
+      { headers: { 'Content-Type': 'multipart/form-data' } },
     )
-
-    // 1. Load into editor so the user sees it instantly.
-    props.editor.commands.setContent(normalizeMammothHtml(result.value))
-
-    // 2. Pull out the resulting Tiptap JSON, externalize any base64 images
-    //    so the persisted document doesn't drag a megabyte payload around.
-    const json: any = props.editor.getJSON()
-    await uploadInlineBase64Images(json)
-
-    // 3. Apply the (now-cleaned) JSON back to the editor — silent so it
-    //    doesn't fire another onUpdate while we're about to PATCH.
-    props.editor.commands.setContent(json, false)
-
-    // 4. Emit upward so DocumentView can do the synchronous HTTP save
-    //    + broadcast over WS. This is what closes the reload race.
-    emit('docxImported', { content: json })
-  } catch (err) {
+    let parsed: unknown = data.content
+    if (typeof parsed === 'string') {
+      try { parsed = JSON.parse(parsed) } catch { /* leave as string */ }
+    }
+    emit('docxImported', { content: parsed })
+  } catch (err: any) {
     console.error('DOCX import failed', err)
-    importError.value = 'Failed to import this DOCX file.'
+    importError.value =
+      err?.response?.data?.file?.[0]
+      ?? err?.response?.data?.detail
+      ?? 'Failed to import this DOCX file.'
   } finally {
     isImporting.value = false
   }
@@ -668,7 +604,17 @@ async function onDocxExport() {
   isExporting.value = true
   try {
     const { exportToDocx } = await import('../../utils/docxExport')
-    await exportToDocx(props.editor.getJSON(), props.docTitle ?? 'document')
+    await exportToDocx(
+      props.editor.getJSON(),
+      props.docTitle ?? 'document',
+      {
+        pageLayout: props.pageLayout,
+        headerJson: props.headerJson ?? null,
+        footerJson: props.footerJson ?? null,
+        showPageNumbers: !!props.showPageNumbers,
+        pageNumberStart: props.pageNumberStart ?? 1,
+      },
+    )
   } catch (err) {
     console.error('DOCX export failed', err)
   } finally {
@@ -688,7 +634,7 @@ const Btn = defineComponent({
         title: p.title,
         disabled: p.disabled,
         class: [
-          'w-7 h-7 flex items-center justify-center rounded transition-colors',
+          'w-7 h-7 flex items-center justify-center rounded text-xs transition-colors',
           p.disabled
             ? 'text-slate-300 cursor-not-allowed'
             : p.active
@@ -704,8 +650,59 @@ const Sep = defineComponent({
   setup: () => () => h('div', { class: 'w-px h-5 bg-slate-200 mx-0.5 shrink-0' }),
 })
 
-// Silence unused watch import — keeping it available for future hooks
-watch(() => props.pageLayout, () => { /* reactive page layout */ })
+const NumberField = defineComponent({
+  props: { label: String, value: Number, min: Number, max: Number },
+  emits: ['change'],
+  setup(p, { emit }) {
+    return () =>
+      h('div', { class: 'flex flex-col gap-1' }, [
+        h('label', { class: 'text-slate-600 font-medium' }, p.label),
+        h('input', {
+          type: 'number',
+          min: p.min,
+          max: p.max,
+          step: 8,
+          value: p.value,
+          class: 'input w-24 h-8',
+          onChange: (e: Event) => {
+            const n = (e.target as HTMLInputElement).valueAsNumber
+            if (!isNaN(n)) emit('change', Math.min(p.max ?? 9999, Math.max(p.min ?? 0, n)))
+          },
+        }),
+      ])
+  },
+})
+
+const PxField = defineComponent({
+  props: { label: String, value: String },
+  emits: ['change'],
+  setup(p, { emit }) {
+    return () => {
+      const numeric = parseInt((p.value ?? '').toString(), 10)
+      return h('div', { class: 'flex flex-col gap-1' }, [
+        h('label', { class: 'text-slate-600 font-medium' }, p.label),
+        h('div', { class: 'flex items-center gap-1' }, [
+          h('input', {
+            type: 'number',
+            step: 4,
+            value: isNaN(numeric) ? '' : numeric,
+            class: 'input w-20 h-8',
+            onChange: (e: Event) => {
+              const n = (e.target as HTMLInputElement).valueAsNumber
+              if (isNaN(n)) emit('change', '')
+              else emit('change', `${n}px`)
+            },
+          }),
+          h('button', {
+            type: 'button',
+            class: 'btn-ghost btn-sm px-2 py-0.5',
+            onClick: () => emit('change', ''),
+          }, '✕'),
+        ]),
+      ])
+    }
+  },
+})
 </script>
 
 <style scoped>

@@ -15,10 +15,16 @@ import {
   BorderStyle,
   ShadingType,
   PageBreak,
+  Header,
+  Footer,
+  PageNumber as DocxPageNumber,
+  NumberFormat,
+  PageOrientation,
   type IRunOptions,
   type ParagraphChild,
 } from 'docx'
 import { saveAs } from 'file-saver'
+import type { PageLayout } from '../types'
 
 // ─── types ────────────────────────────────────────────────────────────────────
 
@@ -33,6 +39,14 @@ type TiptapNode = {
 }
 
 type ImageBlob = { data: ArrayBuffer; mime: string; width: number; height: number }
+
+export interface ExportOptions {
+  pageLayout?: PageLayout
+  headerJson?: unknown
+  footerJson?: unknown
+  showPageNumbers?: boolean
+  pageNumberStart?: number
+}
 
 // ─── mappings ────────────────────────────────────────────────────────────────
 
@@ -52,7 +66,17 @@ const ALIGN_MAP: Record<string, (typeof AlignmentType)[keyof typeof AlignmentTyp
   justify: AlignmentType.JUSTIFIED,
 }
 
-// ─── helpers ──────────────────────────────────────────────────────────────────
+// ─── unit helpers ─────────────────────────────────────────────────────────────
+
+const PX_PER_INCH = 96
+const TWIPS_PER_INCH = 1440
+
+function pxToTwips(px: number | string | undefined): number | undefined {
+  if (px == null) return undefined
+  const n = typeof px === 'string' ? parseFloat(px) : px
+  if (isNaN(n)) return undefined
+  return Math.round((n / PX_PER_INCH) * TWIPS_PER_INCH)
+}
 
 function pxToHalfPts(px: string): number | undefined {
   const n = parseFloat(px)
@@ -88,8 +112,36 @@ function lineSpacing(node: TiptapNode): { line?: number; lineRule?: 'auto' } | u
   if (!lh) return undefined
   const n = parseFloat(lh)
   if (isNaN(n)) return undefined
-  // docx wants line in twentieths of a point. For a unitless multiplier we use 240 * n.
   return { line: Math.round(240 * n), lineRule: 'auto' }
+}
+
+function paragraphSpacing(node: TiptapNode): any {
+  const a = (node.attrs ?? {}) as Record<string, string>
+  const ls = lineSpacing(node)
+  const before = pxToTwips(a.marginTop)
+  const after = pxToTwips(a.marginBottom)
+  if (!ls && before === undefined && after === undefined) return undefined
+  return {
+    ...(ls ?? {}),
+    ...(before !== undefined ? { before } : {}),
+    ...(after !== undefined ? { after } : {}),
+  }
+}
+
+function paragraphIndent(node: TiptapNode): any {
+  const a = (node.attrs ?? {}) as Record<string, string>
+  const left = pxToTwips(a.marginLeft)
+  const right = pxToTwips(a.marginRight)
+  const firstLine = pxToTwips(a.textIndent)
+  if (left === undefined && right === undefined && firstLine === undefined) return undefined
+  const out: any = {}
+  if (left !== undefined) out.left = left
+  if (right !== undefined) out.right = right
+  if (firstLine !== undefined) {
+    if (firstLine >= 0) out.firstLine = firstLine
+    else out.hanging = -firstLine
+  }
+  return out
 }
 
 // ─── image loading & sizing ───────────────────────────────────────────────────
@@ -123,9 +175,7 @@ async function loadImage(src: string): Promise<ImageBlob | null> {
       arrayBuffer = await resp.arrayBuffer()
     }
 
-    // Probe natural size via an <img> so the export keeps proportions.
     const { width, height } = await probeImageSize(arrayBuffer, mime)
-
     const blob: ImageBlob = { data: arrayBuffer, mime, width, height }
     imageCache.set(src, blob)
     return blob
@@ -155,11 +205,8 @@ function probeImageSize(buffer: ArrayBuffer, mime: string): Promise<{ width: num
   })
 }
 
-/**
- * Walk the Tiptap JSON, collect every image src, kick off all loads in
- * parallel, and return the cache pre-warmed.
- */
-async function preloadImages(node: TiptapNode): Promise<void> {
+async function preloadImages(node: TiptapNode | null): Promise<void> {
+  if (!node) return
   const sources = new Set<string>()
   collectSources(node, sources)
   await Promise.all([...sources].map(s => loadImage(s)))
@@ -178,14 +225,16 @@ function imageRunForNode(node: TiptapNode): ImageRun | null {
   const blob = imageCache.get(src)
   if (!blob) return null
 
-  // Constrain to a sensible printable width (~6 in @ 96 dpi = 576px).
+  const explicitW = node.attrs?.width as number | undefined
+  const explicitH = node.attrs?.height as number | undefined
+
   const MAX_W = 576
-  let w = blob.width
-  let h = blob.height
+  let w = explicitW ?? blob.width
+  let h = explicitH ?? blob.height
   if (w > MAX_W) {
     const scale = MAX_W / w
     w = MAX_W
-    h = Math.round(blob.height * scale)
+    h = Math.round((explicitH ?? blob.height) * scale)
   }
 
   return new ImageRun({
@@ -214,7 +263,6 @@ function buildTextRun(node: TiptapNode, parentMarks: TiptapMark[] = []): Paragra
     color: colorToDocxHex(tsAttrs.color),
     superScript: !!marks.superscript,
     subScript: !!marks.subscript,
-    highlight: marks.highlight ? 'yellow' : undefined,
     shading: marks.highlight?.attrs?.color
       ? {
           type: ShadingType.SOLID,
@@ -251,6 +299,11 @@ function inlineContent(content: TiptapNode[] = [], parentMarks: TiptapMark[] = [
     } else if (n.type === 'image') {
       const r = imageRunForNode(n)
       if (r) out.push(r)
+    } else if (n.type === 'pageNumber') {
+      // Word "PAGE" or "NUMPAGES" field.
+      const kind = (n.attrs?.kind as string) ?? 'number'
+      const which = kind === 'count' ? DocxPageNumber.TOTAL_PAGES : DocxPageNumber.CURRENT
+      out.push(new TextRun({ children: [which] }))
     }
   }
   return out
@@ -260,28 +313,33 @@ function inlineContent(content: TiptapNode[] = [], parentMarks: TiptapMark[] = [
 
 type Block = Paragraph | Table
 
-function paragraphFromInline(node: TiptapNode): Paragraph {
-  return new Paragraph({
-    children: inlineContent(node.content),
-    alignment: paragraphAlign(node),
-    spacing: lineSpacing(node),
-  })
-}
-
 function convertNode(node: TiptapNode, listDepth = 0): Block[] {
   switch (node.type) {
     case 'doc':
       return (node.content ?? []).flatMap(n => convertNode(n))
 
     case 'paragraph':
-      // A bare image gets its own paragraph so it doesn't collide with text.
       if (node.content && node.content.length === 1 && node.content[0].type === 'image') {
         const run = imageRunForNode(node.content[0])
         if (run) {
-          return [new Paragraph({ children: [run], alignment: paragraphAlign(node) })]
+          return [
+            new Paragraph({
+              children: [run],
+              alignment: paragraphAlign(node),
+              spacing: paragraphSpacing(node),
+              indent: paragraphIndent(node),
+            }),
+          ]
         }
       }
-      return [paragraphFromInline(node)]
+      return [
+        new Paragraph({
+          children: inlineContent(node.content),
+          alignment: paragraphAlign(node),
+          spacing: paragraphSpacing(node),
+          indent: paragraphIndent(node),
+        }),
+      ]
 
     case 'heading': {
       const level = (node.attrs?.level as number) ?? 1
@@ -290,7 +348,8 @@ function convertNode(node: TiptapNode, listDepth = 0): Block[] {
           heading: HEADING_MAP[level] ?? HeadingLevel.HEADING_1,
           children: inlineContent(node.content),
           alignment: paragraphAlign(node),
-          spacing: lineSpacing(node),
+          spacing: paragraphSpacing(node),
+          indent: paragraphIndent(node),
         }),
       ]
     }
@@ -304,7 +363,7 @@ function convertNode(node: TiptapNode, listDepth = 0): Block[] {
                   children: inlineContent(child.content),
                   bullet: { level: listDepth },
                   alignment: paragraphAlign(child),
-                  spacing: lineSpacing(child),
+                  spacing: paragraphSpacing(child),
                 }),
               ]
             : convertNode(child, listDepth + 1),
@@ -324,7 +383,7 @@ function convertNode(node: TiptapNode, listDepth = 0): Block[] {
                   ...inlineContent(child.content),
                 ],
                 alignment: paragraphAlign(child),
-                spacing: lineSpacing(child),
+                spacing: paragraphSpacing(child),
               }),
             ]
           }
@@ -344,7 +403,7 @@ function convertNode(node: TiptapNode, listDepth = 0): Block[] {
                     new TextRun({ text: checked ? '☒ ' : '☐ ' }),
                     ...inlineContent(child.content),
                   ],
-                  spacing: lineSpacing(child),
+                  spacing: paragraphSpacing(child),
                 }),
               ]
             : convertNode(child),
@@ -360,16 +419,15 @@ function convertNode(node: TiptapNode, listDepth = 0): Block[] {
                   new TextRun({ text: '❝ ', italics: true }),
                   ...inlineContent(child.content),
                 ],
-                indent: { left: 720 },
+                indent: { left: 720, ...paragraphIndent(child) },
                 alignment: paragraphAlign(child),
-                spacing: lineSpacing(child),
+                spacing: paragraphSpacing(child),
               }),
             ]
           : convertNode(child),
       )
 
     case 'codeBlock': {
-      // Re-extract plain text and rebuild runs with a monospace font.
       const codeRuns: ParagraphChild[] = (node.content ?? []).map(child => {
         if (child.type === 'text') {
           return new TextRun({ text: child.text ?? '', font: 'Courier New' })
@@ -434,22 +492,110 @@ function buildTable(node: TiptapNode): Table {
   })
 }
 
+// ─── header / footer builders ────────────────────────────────────────────────
+
+function buildBandChildren(json: unknown): Paragraph[] {
+  if (!json || typeof json !== 'object') {
+    return [new Paragraph({ children: [] })]
+  }
+  const blocks = convertNode(json as TiptapNode)
+  // Word headers/footers want at least one paragraph.
+  return blocks.length > 0
+    ? (blocks.filter(b => b instanceof Paragraph) as Paragraph[])
+    : [new Paragraph({ children: [] })]
+}
+
 // ─── public API ──────────────────────────────────────────────────────────────
 
-export async function exportToDocx(json: unknown, title: string): Promise<void> {
+export async function exportToDocx(
+  json: unknown,
+  title: string,
+  options: ExportOptions = {},
+): Promise<void> {
   const root = json as TiptapNode
 
-  // Load every image referenced in the doc before we start building runs.
-  await preloadImages(root)
+  // Pre-load every image referenced in the body, header, and footer.
+  await Promise.all([
+    preloadImages(root),
+    preloadImages(options.headerJson as TiptapNode | undefined as TiptapNode | null),
+    preloadImages(options.footerJson as TiptapNode | undefined as TiptapNode | null),
+  ])
 
   const children = convertNode(root)
+
+  // Compose a Header / Footer if the user defined one OR if page numbers
+  // are enabled (numbering needs SOME footer to live in).
+  const headerHasContent = bandHasContent(options.headerJson)
+  const footerHasContent = bandHasContent(options.footerJson)
+  const wantsPageNumbers = !!options.showPageNumbers
+
+  const headers = headerHasContent
+    ? {
+        default: new Header({ children: buildBandChildren(options.headerJson) }),
+      }
+    : undefined
+
+  let footerChildren: Paragraph[] = []
+  if (footerHasContent) {
+    footerChildren = buildBandChildren(options.footerJson)
+  } else if (wantsPageNumbers) {
+    footerChildren = [
+      new Paragraph({
+        alignment: AlignmentType.CENTER,
+        children: [new TextRun({ children: [DocxPageNumber.CURRENT] })],
+      }),
+    ]
+  }
+
+  const footers =
+    footerChildren.length > 0
+      ? { default: new Footer({ children: footerChildren }) }
+      : undefined
+
+  const layout = options.pageLayout
+  const sectionProperties: any = {}
+  if (layout) {
+    sectionProperties.page = {
+      size: {
+        width: pxToTwips(layout.page_width),
+        height: pxToTwips(layout.page_height),
+        orientation: layout.page_width > layout.page_height
+          ? PageOrientation.LANDSCAPE
+          : PageOrientation.PORTRAIT,
+      },
+      margin: {
+        top: pxToTwips(layout.margin_top),
+        right: pxToTwips(layout.margin_right),
+        bottom: pxToTwips(layout.margin_bottom),
+        left: pxToTwips(layout.margin_left),
+      },
+      pageNumbers: {
+        start: options.pageNumberStart ?? 1,
+        formatType: NumberFormat.DECIMAL,
+      },
+    }
+  }
 
   const doc = new Document({
     creator: 'KubSTU Docs',
     title,
-    sections: [{ children: children as any }],
+    sections: [{
+      properties: sectionProperties,
+      headers,
+      footers,
+      children: children as any,
+    }],
   })
 
   const blob = await Packer.toBlob(doc)
   saveAs(blob, `${title || 'document'}.docx`)
+}
+
+function bandHasContent(json: unknown): boolean {
+  if (!json || typeof json !== 'object') return false
+  const root = json as TiptapNode
+  if (!root.content?.length) return false
+  return root.content.some((n) =>
+    n.type !== 'paragraph' || (n.content && n.content.length > 0),
+  )
 }

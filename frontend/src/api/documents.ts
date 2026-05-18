@@ -17,12 +17,25 @@ export const updateDocument = (
     is_public?: boolean
     content?: string
     page_width?: number
+    page_height?: number
     margin_top?: number
     margin_right?: number
     margin_bottom?: number
     margin_left?: number
+    header_content?: string
+    footer_content?: string
+    show_page_numbers?: boolean
+    page_number_start?: number
   },
 ) => apiClient.patch<Document>(`/api/docs/${id}/`, data)
+
+export const importDocx = (id: number, file: File) => {
+  const fd = new FormData()
+  fd.append('file', file)
+  return apiClient.post<Document>(`/api/docs/${id}/import-docx/`, fd, {
+    headers: { 'Content-Type': 'multipart/form-data' },
+  })
+}
 
 export const getMyAccess = (docId: number) =>
   apiClient.get<{ role: 'owner' | 'editor' | 'viewer' }>(`/api/docs/${docId}/my-access/`)

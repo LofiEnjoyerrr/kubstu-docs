@@ -104,15 +104,17 @@ class DocumentsRetrieveUpdateAPIView(APIView):
     def patch(self, request, pk):
         document = _get_document_or_404(pk)
 
-        # Editors may patch content (e.g. DOCX import). Other metadata fields
-        # (title / is_public / page layout) are owner-only.
-        editor_only_fields = {'content'}
+        # Editors may patch content / headers / footers (e.g. DOCX import).
+        # All other fields (title / is_public / page layout) are owner-only.
         requested_fields = set(request.data.keys())
 
         is_owner = document.owner == request.user
 
+        # Editor-permitted fields. Anything else is owner-only.
+        editor_fields = {'content', 'header_content', 'footer_content'}
+
         if not is_owner:
-            if not requested_fields.issubset(editor_only_fields):
+            if not requested_fields.issubset(editor_fields):
                 raise PermissionDenied(
                     'Только владелец документа может изменять эти поля'
                 )
@@ -130,8 +132,10 @@ class DocumentsRetrieveUpdateAPIView(APIView):
         content_changed = 'content' in serializer.validated_data
         page_layout_changed = bool(
             requested_fields & {
-                'page_width', 'margin_top', 'margin_right',
-                'margin_bottom', 'margin_left',
+                'page_width', 'page_height',
+                'margin_top', 'margin_right', 'margin_bottom', 'margin_left',
+                'header_content', 'footer_content',
+                'show_page_numbers', 'page_number_start',
             }
         )
 
@@ -167,10 +171,15 @@ class DocumentsRetrieveUpdateAPIView(APIView):
             _broadcast_to_doc(pk, {
                 'type': 'broadcast_page_layout',
                 'page_width': document.page_width,
+                'page_height': document.page_height,
                 'margin_top': document.margin_top,
                 'margin_right': document.margin_right,
                 'margin_bottom': document.margin_bottom,
                 'margin_left': document.margin_left,
+                'header_content': document.header_content,
+                'footer_content': document.footer_content,
+                'show_page_numbers': document.show_page_numbers,
+                'page_number_start': document.page_number_start,
             })
 
         return Response(data)
@@ -261,6 +270,94 @@ class DocumentImageUploadAPIView(APIView):
         url = settings.MEDIA_URL + saved
 
         return Response({'url': url}, status=status.HTTP_201_CREATED)
+
+
+class DocumentDocxImportAPIView(APIView):
+    """
+    Server-side DOCX import. Parses the uploaded file with our custom
+    OOXML reader (preserves direct formatting that mammoth dropped),
+    persists the resulting Tiptap JSON + page settings synchronously,
+    then broadcasts a ``full_replace`` over the WS so any open editors
+    rerender immediately.
+    """
+
+    permission_classes = [IsAuthenticated]
+    parser_classes = [MultiPartParser]
+
+    def post(self, request, pk):
+        document = _get_document_or_404(pk)
+
+        # Editors are allowed to import — same rule as content edit.
+        if document.owner != request.user:
+            allowed = (
+                document.is_public
+                or document.accesses.filter(user=request.user, role='editor').exists()
+            )
+            if not allowed:
+                raise PermissionDenied('Нет прав на изменение документа')
+
+        upload = request.FILES.get('file')
+        if not upload:
+            raise ValidationError({'file': 'Файл не передан'})
+        name = (upload.name or '').lower()
+        if not name.endswith('.docx'):
+            raise ValidationError({'file': 'Ожидается DOCX-файл'})
+
+        # Parse
+        from docs.docx_importer import DocxConverter
+        try:
+            result = DocxConverter(
+                upload.read(),
+                document_pk=document.pk,
+            ).convert()
+        except Exception as e:  # noqa: BLE001 — surface the actual cause
+            raise ValidationError({'file': f'Не удалось распарсить DOCX: {e}'})
+
+        content_json = result['content']
+        page_layout = result['page_layout']
+        header_doc = result.get('header_content')
+        footer_doc = result.get('footer_content')
+
+        # Persist atomically. We hand-roll the save instead of going through
+        # the serializer so we can update many fields in one shot and bump
+        # `version` like the WS path does.
+        document.content = json.dumps(content_json)
+        document.page_width = page_layout.get('page_width', document.page_width)
+        document.page_height = page_layout.get('page_height', document.page_height)
+        document.margin_top = page_layout.get('margin_top', document.margin_top)
+        document.margin_right = page_layout.get('margin_right', document.margin_right)
+        document.margin_bottom = page_layout.get('margin_bottom', document.margin_bottom)
+        document.margin_left = page_layout.get('margin_left', document.margin_left)
+        if header_doc is not None:
+            document.header_content = json.dumps(header_doc)
+        if footer_doc is not None:
+            document.footer_content = json.dumps(footer_doc)
+        document.version = (document.version or 0) + 1
+        document.save()
+
+        # Tell other clients about the new content + (possibly) new layout.
+        _broadcast_to_doc(pk, {
+            'type': 'broadcast_full_replace',
+            'content': content_json,
+            'version': document.version,
+            'user_id': request.user.id,
+            'username': request.user.username,
+        })
+        _broadcast_to_doc(pk, {
+            'type': 'broadcast_page_layout',
+            'page_width': document.page_width,
+            'page_height': document.page_height,
+            'margin_top': document.margin_top,
+            'margin_right': document.margin_right,
+            'margin_bottom': document.margin_bottom,
+            'margin_left': document.margin_left,
+            'header_content': document.header_content,
+            'footer_content': document.footer_content,
+            'show_page_numbers': document.show_page_numbers,
+            'page_number_start': document.page_number_start,
+        })
+
+        return Response(GetDocumentSerializer(document).data, status=status.HTTP_200_OK)
 
 
 class DocumentCommentsAPIView(APIView):
