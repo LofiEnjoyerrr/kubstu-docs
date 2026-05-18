@@ -83,6 +83,7 @@ export function useDocumentSocket(docId: number) {
             user_id: id,
             username: data.username as string,
             color: data.color as string,
+            avatar: (data.avatar as string | null | undefined) ?? null,
           })
         }
         break

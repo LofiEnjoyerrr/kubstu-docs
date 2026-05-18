@@ -45,6 +45,7 @@ export interface CollaboratorInfo {
   user_id: number | null
   username: string
   color: string
+  avatar?: string | null
 }
 
 export interface CursorPosition {

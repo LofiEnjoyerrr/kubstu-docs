@@ -48,11 +48,17 @@
           <div
             v-for="c in collaborators.slice(0, 5)"
             :key="c.user_id ?? c.username"
-            class="w-7 h-7 rounded-full border-2 border-white flex items-center justify-center text-white text-xs font-bold"
-            :style="{ backgroundColor: c.color }"
+            class="w-7 h-7 rounded-full border-2 border-white overflow-hidden flex items-center justify-center text-white text-xs font-bold"
+            :style="c.avatar ? undefined : { backgroundColor: c.color }"
             :title="c.username"
           >
-            {{ c.username[0].toUpperCase() }}
+            <img
+              v-if="c.avatar"
+              :src="resolveMediaUrl(c.avatar)!"
+              :alt="c.username"
+              class="w-full h-full object-cover"
+            />
+            <template v-else>{{ c.username[0].toUpperCase() }}</template>
           </div>
           <div
             v-if="collaborators.length > 5"
@@ -215,6 +221,7 @@ import TiptapEditor from '../components/editor/TiptapEditor.vue'
 import ShareModal from '../components/ShareModal.vue'
 import CommentPanel from '../components/CommentPanel.vue'
 import * as docsApi from '../api/documents'
+import { resolveMediaUrl } from '../utils/media'
 import type { Document, Comment } from '../types'
 
 const route = useRoute()

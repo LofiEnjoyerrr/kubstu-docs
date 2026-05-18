@@ -167,6 +167,7 @@ class DocumentConsumer(AsyncWebsocketConsumer):
             'user_id': event['user_id'],
             'username': event['username'],
             'color': event['color'],
+            'avatar': event.get('avatar'),
         }))
 
     async def broadcast_user_leave(self, event):
@@ -201,12 +202,26 @@ class DocumentConsumer(AsyncWebsocketConsumer):
     def _build_user_info(self) -> dict:
         user = self.user
         if user.is_authenticated:
+            avatar_url = self._get_avatar_url(user)
             return {
                 'user_id': user.id,
                 'username': user.username,
                 'color': getattr(user, 'color', '#808080'),
+                'avatar': avatar_url,
             }
-        return {'user_id': None, 'username': 'Гость', 'color': '#808080'}
+        return {'user_id': None, 'username': 'Гость', 'color': '#808080', 'avatar': None}
+
+    @staticmethod
+    def _get_avatar_url(user) -> str | None:
+        """Avatar URL with a cache-busting query string so updates show up
+        for clients that may already have an older copy cached."""
+        avatar = getattr(user, 'avatar', None)
+        if not avatar or not getattr(avatar, 'name', ''):
+            return None
+        dt_updated = getattr(user, 'dt_updated', None)
+        if dt_updated is None:
+            return avatar.url
+        return f'{avatar.url}?v={int(dt_updated.timestamp())}'
 
     @database_sync_to_async
     def _check_access(self) -> bool:
