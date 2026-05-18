@@ -144,11 +144,13 @@
           :editable="canEdit"
           :doc-id="docId"
           :doc-title="doc?.title"
+          :page-layout="pageLayout"
           class="flex-1 min-w-0"
           @update:model-value="onEditorUpdate"
           @selection-update="onSelectionUpdate"
           @comment-positions-changed="onCommentPositionsChanged"
           @docx-imported="onDocxImported"
+          @update-page-layout="onUpdatePageLayout"
         />
 
         <Transition name="slide-panel">
@@ -222,7 +224,7 @@ import ShareModal from '../components/ShareModal.vue'
 import CommentPanel from '../components/CommentPanel.vue'
 import * as docsApi from '../api/documents'
 import { resolveMediaUrl } from '../utils/media'
-import type { Document, Comment } from '../types'
+import type { Document, Comment, PageLayout } from '../types'
 
 const route = useRoute()
 const auth = useAuthStore()
@@ -240,6 +242,15 @@ const isSaving = ref(false)
 const lastSaved = ref(false)
 const editableTitle = ref('')
 const myRole = ref<'owner' | 'editor' | 'viewer' | null>(null)
+
+const pageLayout = ref<PageLayout>({
+  page_width: 816,
+  margin_top: 96,
+  margin_right: 96,
+  margin_bottom: 96,
+  margin_left: 96,
+})
+let pageLayoutTimer: ReturnType<typeof setTimeout> | null = null
 
 // Comments state
 const comments = ref<Comment[]>([])
@@ -285,6 +296,15 @@ onMounted(async () => {
   try {
     doc.value = await docsStore.fetchDocument(docId.value)
     editableTitle.value = doc.value.title
+
+    // Hydrate page layout from the document
+    pageLayout.value = {
+      page_width: doc.value.page_width ?? 816,
+      margin_top: doc.value.margin_top ?? 96,
+      margin_right: doc.value.margin_right ?? 96,
+      margin_bottom: doc.value.margin_bottom ?? 96,
+      margin_left: doc.value.margin_left ?? 96,
+    }
 
     try {
       editorContent.value = doc.value.content
@@ -355,6 +375,16 @@ onMounted(async () => {
         comments.value[idx] = comment
         applyCommentHighlights()
       }
+    })
+
+    socket.onFullReplace((data) => {
+      editorRef.value?.applyRemote(data.content)
+      if (doc.value) doc.value.content = JSON.stringify(data.content)
+    })
+
+    socket.onPageLayout((layout) => {
+      pageLayout.value = { ...layout }
+      if (doc.value) Object.assign(doc.value, layout)
     })
 
     socket.connect()
@@ -492,12 +522,46 @@ async function syncCommentsToBackend() {
   ])
 }
 
-async function onDocxImported() {
-  await nextTick()
-  if (!canEdit.value || editorContent.value == null) return
+async function onDocxImported(payload: { content: unknown }) {
+  if (!canEdit.value) return
+  // Cancel any pending debounced WS save — we're about to save synchronously
+  // over HTTP so the document is durable BEFORE we let the user reload.
   if (contentSaveTimer) clearTimeout(contentSaveTimer)
-  socket.sendEdit(editorContent.value, editorContent.value)
-  showSaved()
+
+  const content = payload.content
+  // Reflect locally so the binding is in sync with what we just persisted.
+  editorContent.value = content
+  isSaving.value = true
+  try {
+    await docsApi.updateDocument(docId.value, {
+      content: typeof content === 'string' ? content : JSON.stringify(content),
+    })
+    // The HTTP PATCH endpoint broadcasts a `full_replace` over WS so any
+    // other connected client picks up the import instantly. We still update
+    // local state via the showSaved() ack.
+    if (doc.value) doc.value.content = typeof content === 'string' ? content : JSON.stringify(content)
+  } catch (err) {
+    console.error('Failed to persist DOCX import', err)
+  } finally {
+    isSaving.value = false
+    lastSaved.value = true
+    setTimeout(() => { lastSaved.value = false }, 2000)
+  }
+}
+
+function onUpdatePageLayout(patch: Partial<PageLayout>) {
+  pageLayout.value = { ...pageLayout.value, ...patch }
+  if (myRole.value !== 'owner') return
+  // Debounce PATCH so dragging a number input doesn't fire on every keystroke.
+  if (pageLayoutTimer) clearTimeout(pageLayoutTimer)
+  pageLayoutTimer = setTimeout(async () => {
+    try {
+      const updated = await docsApi.updateDocument(docId.value, patch)
+      if (doc.value) Object.assign(doc.value, updated.data)
+    } catch (err) {
+      console.error('Failed to save page layout', err)
+    }
+  }, 400)
 }
 
 function showSaved() {

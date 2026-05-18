@@ -22,6 +22,32 @@ class Document(AutoDateMixin):
         verbose_name='Версия',
     )
 
+    page_width = models.PositiveIntegerField(
+        default=816,
+        db_default=816,
+        verbose_name='Ширина страницы (px)',
+    )
+    margin_top = models.PositiveIntegerField(
+        default=96,
+        db_default=96,
+        verbose_name='Верхний отступ (px)',
+    )
+    margin_right = models.PositiveIntegerField(
+        default=96,
+        db_default=96,
+        verbose_name='Правый отступ (px)',
+    )
+    margin_bottom = models.PositiveIntegerField(
+        default=96,
+        db_default=96,
+        verbose_name='Нижний отступ (px)',
+    )
+    margin_left = models.PositiveIntegerField(
+        default=96,
+        db_default=96,
+        verbose_name='Левый отступ (px)',
+    )
+
     owner = models.ForeignKey(
         User,
         on_delete=models.CASCADE,

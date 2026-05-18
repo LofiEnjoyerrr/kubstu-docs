@@ -18,6 +18,11 @@ class GetDocumentSerializer(serializers.ModelSerializer):
             'is_public',
             'owner',
             'owner_id',
+            'page_width',
+            'margin_top',
+            'margin_right',
+            'margin_bottom',
+            'margin_left',
             'dt_created',
             'dt_updated',
         )
@@ -30,13 +35,49 @@ class PostDocumentSerializer(serializers.ModelSerializer):
 
 
 class PatchDocumentSerializer(serializers.ModelSerializer):
+    """
+    Owner-only metadata patches. `content` is accepted here too — used by
+    bulk operations (DOCX import) that need a synchronous HTTP save so a
+    page reload right after the import cannot lose the new content.
+    """
+
     class Meta:
         model = Document
-        fields = ('title', 'is_public')
+        fields = (
+            'title',
+            'content',
+            'is_public',
+            'page_width',
+            'margin_top',
+            'margin_right',
+            'margin_bottom',
+            'margin_left',
+        )
         extra_kwargs = {
             'title': {'required': False},
+            'content': {'required': False},
             'is_public': {'required': False},
+            'page_width': {'required': False},
+            'margin_top': {'required': False},
+            'margin_right': {'required': False},
+            'margin_bottom': {'required': False},
+            'margin_left': {'required': False},
         }
+
+    def validate_page_width(self, v):
+        if v < 320 or v > 2400:
+            raise ValidationError('Ширина страницы должна быть от 320 до 2400 px')
+        return v
+
+    def _validate_margin(self, v):
+        if v < 0 or v > 600:
+            raise ValidationError('Отступ должен быть от 0 до 600 px')
+        return v
+
+    validate_margin_top = _validate_margin
+    validate_margin_right = _validate_margin
+    validate_margin_bottom = _validate_margin
+    validate_margin_left = _validate_margin
 
 
 class DocumentAccessSerializer(serializers.ModelSerializer):

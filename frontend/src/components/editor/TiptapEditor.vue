@@ -1,8 +1,19 @@
 <template>
-  <div class="flex flex-col flex-1 overflow-hidden">
-    <EditorToolbar v-if="editor && editable" :editor="editor" :doc-id="docId" :doc-title="docTitle" @docx-imported="emit('docxImported')" />
+  <div class="flex flex-col flex-1 overflow-hidden bg-slate-100">
+    <EditorToolbar
+      v-if="editor && editable"
+      :editor="editor"
+      :doc-id="docId"
+      :doc-title="docTitle"
+      :page-layout="pageLayout"
+      @docx-imported="payload => emit('docxImported', payload)"
+      @update-page-layout="layout => emit('updatePageLayout', layout)"
+    />
     <div class="flex-1 overflow-y-auto">
-      <div class="max-w-4xl mx-auto px-8 py-10 min-h-full">
+      <div
+        class="mx-auto my-8 bg-white shadow-lg transition-[width,padding] duration-150"
+        :style="pageStyle"
+      >
         <EditorContent :editor="editor" class="tiptap-editor focus:outline-none min-h-[60vh]" />
       </div>
     </div>
@@ -10,7 +21,7 @@
 </template>
 
 <script setup lang="ts">
-import { watch, onBeforeUnmount } from 'vue'
+import { watch, computed, onBeforeUnmount } from 'vue'
 import { useEditor, EditorContent } from '@tiptap/vue-3'
 import { Extension } from '@tiptap/core'
 import StarterKit from '@tiptap/starter-kit'
@@ -21,6 +32,15 @@ import Link from '@tiptap/extension-link'
 import Placeholder from '@tiptap/extension-placeholder'
 import TextStyle from '@tiptap/extension-text-style'
 import Color from '@tiptap/extension-color'
+import Highlight from '@tiptap/extension-highlight'
+import Subscript from '@tiptap/extension-subscript'
+import Superscript from '@tiptap/extension-superscript'
+import Table from '@tiptap/extension-table'
+import TableRow from '@tiptap/extension-table-row'
+import TableCell from '@tiptap/extension-table-cell'
+import TableHeader from '@tiptap/extension-table-header'
+import TaskList from '@tiptap/extension-task-list'
+import TaskItem from '@tiptap/extension-task-item'
 import EditorToolbar from './EditorToolbar.vue'
 import { RemoteCursors, setCursor, removeCursor } from './RemoteCursors'
 import type { RemoteCursor } from './RemoteCursors'
@@ -28,21 +48,26 @@ import { CommentHighlights, setCommentMarks, getCommentMarks } from './CommentHi
 import type { CommentMark } from './CommentHighlights'
 import { FontSize } from './FontSize'
 import { FontFamily } from './FontFamily'
+import { LineHeight } from './LineHeight'
+import { FindReplace } from './FindReplace'
 import apiClient from '../../api/client'
 import { resolveMediaUrl } from '../../utils/media'
+import type { PageLayout } from '../../types'
 
 const props = defineProps<{
   modelValue: unknown
   editable?: boolean
   docId?: number
   docTitle?: string
+  pageLayout: PageLayout
 }>()
 
 const emit = defineEmits<{
   'update:modelValue': [value: unknown]
   selectionUpdate: [from: number, to: number, text: string]
   commentPositionsChanged: [payload: { updated: Array<{ id: number; from: number; to: number; quote: string }>; deleted: number[] }]
-  docxImported: []
+  docxImported: [payload: { content: unknown }]
+  updatePageLayout: [layout: Partial<PageLayout>]
 }>()
 
 let isRemoteUpdate = false
@@ -56,12 +81,18 @@ const ListIndent = Extension.create({
   addKeyboardShortcuts() {
     return {
       Tab: () => {
+        if (this.editor.isActive('taskItem')) {
+          return this.editor.commands.sinkListItem('taskItem')
+        }
         if (this.editor.isActive('listItem')) {
           return this.editor.commands.sinkListItem('listItem')
         }
         return false
       },
       'Shift-Tab': () => {
+        if (this.editor.isActive('taskItem')) {
+          return this.editor.commands.liftListItem('taskItem')
+        }
         if (this.editor.isActive('listItem')) {
           return this.editor.commands.liftListItem('listItem')
         }
@@ -78,12 +109,23 @@ const editor = useEditor({
     Underline,
     TextAlign.configure({ types: ['heading', 'paragraph'] }),
     Image.configure({ inline: false, allowBase64: true }),
-    Link.configure({ openOnClick: false }),
+    Link.configure({ openOnClick: false, autolink: true, linkOnPaste: true }),
     Placeholder.configure({ placeholder: 'Start writing your document…' }),
     TextStyle,
     Color,
+    Highlight.configure({ multicolor: true }),
+    Subscript,
+    Superscript,
+    Table.configure({ resizable: true, allowTableNodeSelection: true }),
+    TableRow,
+    TableHeader,
+    TableCell,
+    TaskList,
+    TaskItem.configure({ nested: true }),
     FontSize,
     FontFamily,
+    LineHeight,
+    FindReplace,
     RemoteCursors,
     CommentHighlights,
     ListIndent,
@@ -161,6 +203,21 @@ const editor = useEditor({
       emit('commentPositionsChanged', { updated, deleted })
     }
   },
+})
+
+// ── page layout styling ─────────────────────────────────────────────────────
+
+const pageStyle = computed(() => {
+  const l = props.pageLayout
+  return {
+    width: `${l.page_width}px`,
+    paddingTop: `${l.margin_top}px`,
+    paddingRight: `${l.margin_right}px`,
+    paddingBottom: `${l.margin_bottom}px`,
+    paddingLeft: `${l.margin_left}px`,
+    minHeight: `${Math.round(l.page_width * 1.414)}px`, // ~A4 aspect
+    boxSizing: 'border-box' as const,
+  }
 })
 
 // ── image upload ─────────────────────────────────────────────────────────────
@@ -252,3 +309,81 @@ defineExpose({ applyRemote, updateCursor, clearCursor, setComments, jumpTo })
 
 onBeforeUnmount(() => editor.value?.destroy())
 </script>
+
+<style>
+/* Find & replace highlights — global so they can target ProseMirror's
+   decoration spans which sit outside the scoped style boundary. */
+.find-match {
+  background: rgba(250, 204, 21, 0.45);
+  border-radius: 2px;
+}
+.find-match-active {
+  background: rgba(249, 115, 22, 0.65);
+  box-shadow: 0 0 0 2px rgba(249, 115, 22, 0.5);
+}
+
+/* Tables */
+.tiptap-editor table {
+  border-collapse: collapse;
+  table-layout: fixed;
+  width: 100%;
+  margin: 1rem 0;
+  overflow: hidden;
+}
+.tiptap-editor table td,
+.tiptap-editor table th {
+  border: 1px solid #cbd5e1;
+  padding: 6px 10px;
+  vertical-align: top;
+  position: relative;
+  min-width: 1em;
+}
+.tiptap-editor table th {
+  background: #f1f5f9;
+  font-weight: 600;
+  text-align: left;
+}
+.tiptap-editor table .selectedCell::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background: rgba(37, 99, 235, 0.15);
+  pointer-events: none;
+}
+.tiptap-editor .tableWrapper {
+  overflow-x: auto;
+}
+.tiptap-editor table .column-resize-handle {
+  position: absolute;
+  right: -2px;
+  top: 0;
+  bottom: -2px;
+  width: 4px;
+  background-color: #3b82f6;
+  pointer-events: none;
+}
+
+/* Task list */
+.tiptap-editor ul[data-type='taskList'] {
+  list-style: none;
+  padding: 0;
+}
+.tiptap-editor ul[data-type='taskList'] li {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.5rem;
+}
+.tiptap-editor ul[data-type='taskList'] li > label {
+  margin-top: 0.25rem;
+  user-select: none;
+}
+.tiptap-editor ul[data-type='taskList'] li > div {
+  flex: 1;
+}
+
+/* Highlight */
+.tiptap-editor mark {
+  padding: 0 2px;
+  border-radius: 2px;
+}
+</style>

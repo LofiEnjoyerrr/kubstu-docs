@@ -12,7 +12,15 @@ export interface User {
   color: string
 }
 
-export interface Document {
+export interface PageLayout {
+  page_width: number
+  margin_top: number
+  margin_right: number
+  margin_bottom: number
+  margin_left: number
+}
+
+export interface Document extends PageLayout {
   id: number
   title: string
   content: string

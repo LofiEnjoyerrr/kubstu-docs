@@ -1,5 +1,5 @@
 import { ref, onUnmounted } from 'vue'
-import type { CollaboratorInfo, Comment } from '../types'
+import type { CollaboratorInfo, Comment, PageLayout } from '../types'
 
 type InitCallback = (data: { content: unknown; version: number; users: CollaboratorInfo[] }) => void
 type EditCallback = (data: { delta: unknown; version: number; user_id: number; username: string; color: string }) => void
@@ -8,6 +8,8 @@ type UserLeaveCallback = (userId: number | null) => void
 type CommentAddCallback = (comment: Comment) => void
 type CommentDeleteCallback = (commentId: number) => void
 type CommentUpdateCallback = (comment: Comment) => void
+type FullReplaceCallback = (data: { content: unknown; version: number; user_id: number | null }) => void
+type PageLayoutCallback = (layout: PageLayout) => void
 
 export function useDocumentSocket(docId: number) {
   const ws = ref<WebSocket | null>(null)
@@ -22,6 +24,8 @@ export function useDocumentSocket(docId: number) {
   let onCommentAddCb: CommentAddCallback | null = null
   let onCommentDeleteCb: CommentDeleteCallback | null = null
   let onCommentUpdateCb: CommentUpdateCallback | null = null
+  let onFullReplaceCb: FullReplaceCallback | null = null
+  let onPageLayoutCb: PageLayoutCallback | null = null
   let reconnectTimer: ReturnType<typeof setTimeout> | null = null
 
   function buildWsUrl() {
@@ -107,6 +111,21 @@ export function useDocumentSocket(docId: number) {
       case 'comment_update':
         onCommentUpdateCb?.(data.comment as Comment)
         break
+
+      case 'full_replace':
+        serverVersion.value = data.version as number
+        onFullReplaceCb?.(data as Parameters<FullReplaceCallback>[0])
+        break
+
+      case 'page_layout':
+        onPageLayoutCb?.({
+          page_width: data.page_width as number,
+          margin_top: data.margin_top as number,
+          margin_right: data.margin_right as number,
+          margin_bottom: data.margin_bottom as number,
+          margin_left: data.margin_left as number,
+        })
+        break
     }
   }
 
@@ -131,6 +150,8 @@ export function useDocumentSocket(docId: number) {
   function onCommentAdd(cb: CommentAddCallback) { onCommentAddCb = cb }
   function onCommentDelete(cb: CommentDeleteCallback) { onCommentDeleteCb = cb }
   function onCommentUpdate(cb: CommentUpdateCallback) { onCommentUpdateCb = cb }
+  function onFullReplace(cb: FullReplaceCallback) { onFullReplaceCb = cb }
+  function onPageLayout(cb: PageLayoutCallback) { onPageLayoutCb = cb }
 
   function disconnect() {
     if (reconnectTimer) { clearTimeout(reconnectTimer); reconnectTimer = null }
@@ -152,6 +173,7 @@ export function useDocumentSocket(docId: number) {
   return {
     connect, disconnect, sendEdit, sendCursor,
     onInit, onEdit, onCursor, onUserLeave, onCommentAdd, onCommentDelete, onCommentUpdate,
+    onFullReplace, onPageLayout,
     collaborators, serverVersion, isConnected,
   }
 }

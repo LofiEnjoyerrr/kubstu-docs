@@ -1,3 +1,4 @@
+import json
 import os
 import uuid
 
@@ -102,11 +103,77 @@ class DocumentsRetrieveUpdateAPIView(APIView):
     @extend_schema(request=PatchDocumentSerializer(), responses=GetDocumentSerializer())
     def patch(self, request, pk):
         document = _get_document_or_404(pk)
-        _require_owner(document, request.user)
+
+        # Editors may patch content (e.g. DOCX import). Other metadata fields
+        # (title / is_public / page layout) are owner-only.
+        editor_only_fields = {'content'}
+        requested_fields = set(request.data.keys())
+
+        is_owner = document.owner == request.user
+
+        if not is_owner:
+            if not requested_fields.issubset(editor_only_fields):
+                raise PermissionDenied(
+                    'Только владелец документа может изменять эти поля'
+                )
+            if not request.user.is_authenticated:
+                raise PermissionDenied('Требуется авторизация')
+            allowed = (
+                document.is_public
+                or document.accesses.filter(user=request.user, role='editor').exists()
+            )
+            if not allowed:
+                raise PermissionDenied('Нет прав на редактирование документа')
+
         serializer = PatchDocumentSerializer(document, data=request.data, partial=True)
         serializer.is_valid(raise_exception=True)
-        document = serializer.save()
-        return Response(GetDocumentSerializer(document).data)
+        content_changed = 'content' in serializer.validated_data
+        page_layout_changed = bool(
+            requested_fields & {
+                'page_width', 'margin_top', 'margin_right',
+                'margin_bottom', 'margin_left',
+            }
+        )
+
+        if content_changed:
+            # Bump version like the WS path does so other clients see the
+            # broadcasted edit as a fresh change, not a stale replay.
+            document.version = (document.version or 0) + 1
+            serializer.save(version=document.version)
+        else:
+            serializer.save()
+
+        document.refresh_from_db()
+        data = GetDocumentSerializer(document).data
+
+        if content_changed:
+            # Notify everyone in the doc room that the document was rewritten.
+            try:
+                content_json = (
+                    json.loads(document.content) if document.content else {}
+                )
+            except (json.JSONDecodeError, TypeError):
+                content_json = document.content or {}
+
+            _broadcast_to_doc(pk, {
+                'type': 'broadcast_full_replace',
+                'content': content_json,
+                'version': document.version,
+                'user_id': request.user.id,
+                'username': request.user.username,
+            })
+
+        if page_layout_changed:
+            _broadcast_to_doc(pk, {
+                'type': 'broadcast_page_layout',
+                'page_width': document.page_width,
+                'margin_top': document.margin_top,
+                'margin_right': document.margin_right,
+                'margin_bottom': document.margin_bottom,
+                'margin_left': document.margin_left,
+            })
+
+        return Response(data)
 
 
 class DocumentAccessListCreateAPIView(APIView):

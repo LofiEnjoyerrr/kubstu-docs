@@ -27,7 +27,19 @@ export const useDocumentsStore = defineStore('documents', () => {
     return res.data
   }
 
-  async function updateDocument(id: number, data: { title?: string; is_public?: boolean }) {
+  async function updateDocument(
+    id: number,
+    data: {
+      title?: string
+      is_public?: boolean
+      content?: string
+      page_width?: number
+      margin_top?: number
+      margin_right?: number
+      margin_bottom?: number
+      margin_left?: number
+    },
+  ) {
     const res = await docsApi.updateDocument(id, data)
     currentDocument.value = res.data
     const idx = ownerDocuments.value.findIndex((d) => d.id === id)

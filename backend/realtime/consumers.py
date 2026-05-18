@@ -197,6 +197,30 @@ class DocumentConsumer(AsyncWebsocketConsumer):
             'comment': event['comment'],
         }))
 
+    async def broadcast_full_replace(self, event):
+        """
+        A full-document rewrite (e.g. DOCX import) issued over HTTP.
+        Sent to every connected client including the originator so that
+        any of them whose editor state is older gets resynced.
+        """
+        await self.send(text_data=json.dumps({
+            'type': 'full_replace',
+            'content': event['content'],
+            'version': event['version'],
+            'user_id': event.get('user_id'),
+            'username': event.get('username'),
+        }))
+
+    async def broadcast_page_layout(self, event):
+        await self.send(text_data=json.dumps({
+            'type': 'page_layout',
+            'page_width': event['page_width'],
+            'margin_top': event['margin_top'],
+            'margin_right': event['margin_right'],
+            'margin_bottom': event['margin_bottom'],
+            'margin_left': event['margin_left'],
+        }))
+
     # ------------------------------------------------------------------ helpers
 
     def _build_user_info(self) -> dict:

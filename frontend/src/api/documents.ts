@@ -10,8 +10,19 @@ export const getAvailableDocuments = () =>
 export const getDocument = (id: number) =>
   apiClient.get<Document>(`/api/docs/${id}/`)
 
-export const updateDocument = (id: number, data: { title?: string; is_public?: boolean }) =>
-  apiClient.patch<Document>(`/api/docs/${id}/`, data)
+export const updateDocument = (
+  id: number,
+  data: {
+    title?: string
+    is_public?: boolean
+    content?: string
+    page_width?: number
+    margin_top?: number
+    margin_right?: number
+    margin_bottom?: number
+    margin_left?: number
+  },
+) => apiClient.patch<Document>(`/api/docs/${id}/`, data)
 
 export const getMyAccess = (docId: number) =>
   apiClient.get<{ role: 'owner' | 'editor' | 'viewer' }>(`/api/docs/${docId}/my-access/`)
