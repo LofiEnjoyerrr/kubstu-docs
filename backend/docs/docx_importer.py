@@ -81,15 +81,18 @@ def emu_to_px(emu: str | int | None) -> int | None:
     return round(n / EMU_PER_PX)
 
 
-def halfpt_to_px(halfpt: str | int | None) -> int | None:
-    """Word font sizes are in half-points. Convert to CSS px (1pt = 1.333 px)."""
+def halfpt_to_pt(halfpt: str | int | None) -> float | None:
+    """Word font sizes are in half-points. The editor now stores sizes in
+    points (``"12pt"``) so the toolbar dropdown's number matches what
+    appears in the exported DOCX. Returns the value as a float since
+    Word allows half-point increments (e.g. 10.5pt)."""
     if halfpt is None:
         return None
     try:
-        n = int(float(halfpt))
+        n = float(halfpt)
     except (TypeError, ValueError):
         return None
-    return round((n / 2) * (96 / 72))
+    return n / 2
 
 
 # ─── helpers ──────────────────────────────────────────────────────────────────
@@ -212,9 +215,11 @@ class StyleDef:
         self.heading_level: int | None = None
         self.alignment: str | None = None
         self.is_list_paragraph: bool = False
-        # Run-level defaults from this style
+        # Run-level defaults from this style. Font size is stored as a
+        # point value (matches what the editor's dropdown displays and what
+        # Word writes out in DOCX).
         self.font_family: str | None = None
-        self.font_size_px: int | None = None
+        self.font_size_pt: float | None = None
         self.bold: bool = False
         self.italic: bool = False
 
@@ -261,7 +266,7 @@ class StyleRegistry:
                     )
                 sz = rpr.find(qn('sz'))
                 if sz is not None:
-                    d.font_size_px = halfpt_to_px(sz.get(qn('val')))
+                    d.font_size_pt = halfpt_to_pt(sz.get(qn('val')))
                 if rpr.find(qn('b')) is not None:
                     d.bold = True
                 if rpr.find(qn('i')) is not None:
@@ -396,7 +401,17 @@ class DocxConverter:
     # ---------------------------------------------------------- page settings
 
     def _build_page_layout(self, body: ET.Element) -> dict[str, int]:
-        sect = body.find(qn('sectPr'))
+        """
+        Read page size/margins from the document's section properties.
+
+        OOXML stores intermediate sections as ``<w:sectPr>`` inside a
+        paragraph's ``<w:pPr>`` (that paragraph closes the section), and the
+        FINAL section as a top-level ``<w:sectPr>`` on the body. The page
+        size and margins for the layout settings come from the body-final
+        sectPr; the numbering start, however, must come from the FIRST
+        section's properties so the document's "start at" setting matches
+        page 1's number.
+        """
         layout = {
             'page_width': 816,
             'page_height': 1056,
@@ -405,27 +420,50 @@ class DocxConverter:
             'margin_bottom': 96,
             'margin_left': 96,
         }
-        if sect is None:
-            return layout
-        pgsz = sect.find(qn('pgSz'))
-        if pgsz is not None:
-            w = twips_to_px(pgsz.get(qn('w')))
-            h = twips_to_px(pgsz.get(qn('h')))
-            if w:
-                layout['page_width'] = w
-            if h:
-                layout['page_height'] = h
-        pgmar = sect.find(qn('pgMar'))
-        if pgmar is not None:
-            for src, dst in (
-                ('top', 'margin_top'),
-                ('right', 'margin_right'),
-                ('bottom', 'margin_bottom'),
-                ('left', 'margin_left'),
-            ):
-                v = twips_to_px(pgmar.get(qn(src)))
-                if v is not None:
-                    layout[dst] = v
+        final_sect = body.find(qn('sectPr'))
+        if final_sect is not None:
+            pgsz = final_sect.find(qn('pgSz'))
+            if pgsz is not None:
+                w = twips_to_px(pgsz.get(qn('w')))
+                h = twips_to_px(pgsz.get(qn('h')))
+                if w:
+                    layout['page_width'] = w
+                if h:
+                    layout['page_height'] = h
+            pgmar = final_sect.find(qn('pgMar'))
+            if pgmar is not None:
+                for src, dst in (
+                    ('top', 'margin_top'),
+                    ('right', 'margin_right'),
+                    ('bottom', 'margin_bottom'),
+                    ('left', 'margin_left'),
+                ):
+                    v = twips_to_px(pgmar.get(qn(src)))
+                    if v is not None:
+                        layout[dst] = v
+
+        # Find the FIRST section's pgNumType: the first intermediate sectPr if
+        # any, else the body-final sectPr.
+        first_sect = None
+        for p in body.findall(qn('p')):
+            ppr = p.find(qn('pPr'))
+            if ppr is None:
+                continue
+            inner = ppr.find(qn('sectPr'))
+            if inner is not None:
+                first_sect = inner
+                break
+        if first_sect is None:
+            first_sect = final_sect
+        if first_sect is not None:
+            pg_num = first_sect.find(qn('pgNumType'))
+            if pg_num is not None:
+                start = pg_num.get(qn('start'))
+                if start is not None:
+                    try:
+                        layout['page_number_start'] = int(start)
+                    except ValueError:
+                        pass
         return layout
 
     # ----------------------------------------------------- header/footer parse
@@ -468,6 +506,12 @@ class DocxConverter:
         Walk a ``<w:body>`` (or ``<w:hdr>``/``<w:ftr>``) and produce a list of
         Tiptap block nodes. Consecutive list-paragraphs collapse into a single
         ``bulletList`` / ``orderedList`` so the editor renders them as one list.
+
+        Word marks the end of a section either with an in-body ``<w:sectPr>``
+        (intermediate section) or the body-final ``<w:sectPr>`` (last section).
+        Each intermediate section produces a ``sectionBreak`` node so the
+        editor can render it as a visual page boundary AND keep its
+        independent page-number sequence.
         """
         out: list[dict] = []
         list_buffer: list[tuple[str, dict, int]] = []  # (kind, paragraph_node, level)
@@ -506,17 +550,46 @@ class DocxConverter:
                 node = self._build_paragraph(child)
                 if node:
                     out.append(node)
+                # An intermediate <w:sectPr> nested in a paragraph's pPr marks
+                # the END of a section. Convert it to a sectionBreak node.
+                ppr = child.find(qn('pPr'))
+                if ppr is not None and ppr.find(qn('sectPr')) is not None:
+                    sect_pr = ppr.find(qn('sectPr'))
+                    out.append(self._section_break_from_sect_pr(sect_pr))
             elif tag == qn('tbl'):
                 flush_list()
                 out.append(self._build_table(child))
             else:
-                # sectPr / bookmarks / etc — skip silently
+                # The body-final sectPr lives at the top level — we skip it
+                # here (the layout/page setup parser handles it separately).
                 continue
         flush_list()
 
         if not out:
             out.append(self._empty_paragraph())
         return out
+
+    @staticmethod
+    def _section_break_from_sect_pr(sect_pr: ET.Element | None) -> dict:
+        """
+        Build a ``sectionBreak`` node from a ``<w:sectPr>``. Honors
+        ``<w:pgNumType w:start="N"/>`` for restart numbering.
+        """
+        attrs: dict[str, Any] = {}
+        if sect_pr is not None:
+            pg_num = sect_pr.find(qn('pgNumType'))
+            if pg_num is not None:
+                start = pg_num.get(qn('start'))
+                if start is not None:
+                    try:
+                        attrs['restartNumbering'] = True
+                        attrs['numberStart'] = int(start)
+                    except ValueError:
+                        pass
+        if not attrs:
+            # No explicit restart — default to "continue numbering".
+            attrs = {'restartNumbering': False, 'numberStart': 1}
+        return {'type': 'sectionBreak', 'attrs': attrs}
 
     @staticmethod
     def _empty_paragraph() -> dict:
@@ -739,7 +812,7 @@ class DocxConverter:
         # textStyle: font, size, color
         ts: dict[str, str] = {}
         font_family = None
-        font_size_px = None
+        font_size_pt: float | None = None
         color_hex = None
 
         if rpr is not None:
@@ -752,20 +825,26 @@ class DocxConverter:
                 )
             sz = rpr.find(qn('sz'))
             if sz is not None:
-                font_size_px = halfpt_to_px(sz.get(qn('val')))
+                font_size_pt = halfpt_to_pt(sz.get(qn('val')))
             col = rpr.find(qn('color'))
             if col is not None:
                 color_hex = color_to_hex(col.get(qn('val')))
 
         if not font_family and defaults:
             font_family = defaults.font_family
-        if not font_size_px and defaults:
-            font_size_px = defaults.font_size_px
+        if not font_size_pt and defaults:
+            font_size_pt = defaults.font_size_pt
 
         if font_family:
             ts['fontFamily'] = font_family
-        if font_size_px:
-            ts['fontSize'] = f'{font_size_px}px'
+        if font_size_pt:
+            # Emit as integer pt when possible — matches the toolbar
+            # dropdown values exactly (which are whole-number sizes).
+            rounded = round(font_size_pt)
+            if abs(font_size_pt - rounded) < 0.01:
+                ts['fontSize'] = f'{rounded}pt'
+            else:
+                ts['fontSize'] = f'{font_size_pt:g}pt'
         if color_hex:
             ts['color'] = color_hex
         if ts:

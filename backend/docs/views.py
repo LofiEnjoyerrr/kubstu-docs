@@ -328,6 +328,8 @@ class DocumentDocxImportAPIView(APIView):
         document.margin_right = page_layout.get('margin_right', document.margin_right)
         document.margin_bottom = page_layout.get('margin_bottom', document.margin_bottom)
         document.margin_left = page_layout.get('margin_left', document.margin_left)
+        if 'page_number_start' in page_layout:
+            document.page_number_start = page_layout['page_number_start']
         if header_doc is not None:
             document.header_content = json.dumps(header_doc)
         if footer_doc is not None:

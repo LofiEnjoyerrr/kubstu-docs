@@ -16,8 +16,8 @@
               </svg>
             </div>
           </div>
-          <h2 class="text-xl font-semibold text-slate-800 mb-2">Verifying your email…</h2>
-          <p class="text-slate-500 text-sm">Please wait a moment.</p>
+          <h2 class="text-xl font-semibold text-slate-800 mb-2">Подтверждение email…</h2>
+          <p class="text-slate-500 text-sm">Подождите немного.</p>
         </div>
 
         <!-- Success -->
@@ -47,20 +47,20 @@
             </div>
           </div>
 
-          <h2 class="text-2xl font-bold text-slate-800 mb-2">Email confirmed!</h2>
-          <p class="text-slate-500 text-sm mb-1">Your account has been activated.</p>
+          <h2 class="text-2xl font-bold text-slate-800 mb-2">Email подтверждён!</h2>
+          <p class="text-slate-500 text-sm mb-1">Ваш аккаунт активирован.</p>
           <p class="text-slate-400 text-xs mb-8">
-            Signed in as <span class="font-medium text-primary-600">{{ auth.user?.username }}</span>
+            Вход выполнен как <span class="font-medium text-primary-600">{{ auth.user?.username }}</span>
           </p>
 
           <!-- Countdown ring -->
           <div class="flex flex-col items-center gap-4">
             <p class="text-sm text-slate-500">
-              Redirecting to dashboard in
-              <span class="font-semibold text-primary-600 tabular-nums">{{ countdown }}s</span>…
+              Перенаправление в личный кабинет через
+              <span class="font-semibold text-primary-600 tabular-nums">{{ countdown }} с</span>…
             </p>
             <RouterLink to="/dashboard" class="btn-primary btn-lg w-full">
-              Go to Dashboard now
+              Перейти в личный кабинет
               <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 7l5 5m0 0l-5 5m5-5H6"/>
               </svg>
@@ -75,11 +75,11 @@
               <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z"/>
             </svg>
           </div>
-          <h2 class="text-2xl font-bold text-slate-800 mb-2">Verification failed</h2>
+          <h2 class="text-2xl font-bold text-slate-800 mb-2">Подтверждение не удалось</h2>
           <p class="text-slate-500 text-sm mb-8">{{ errorMessage }}</p>
           <div class="flex flex-col gap-3">
-            <RouterLink to="/register" class="btn-primary w-full">Register again</RouterLink>
-            <RouterLink to="/login" class="btn-secondary w-full">Sign in</RouterLink>
+            <RouterLink to="/register" class="btn-primary w-full">Зарегистрироваться заново</RouterLink>
+            <RouterLink to="/login" class="btn-secondary w-full">Войти</RouterLink>
           </div>
         </div>
       </Transition>
@@ -106,7 +106,7 @@ const router = useRouter()
 const auth = useAuthStore()
 
 const state = ref<'loading' | 'success' | 'error'>('loading')
-const errorMessage = ref('The link is invalid or has already been used.')
+const errorMessage = ref('Эта ссылка недействительна или уже использована.')
 const countdown = ref(5)
 
 // Progress ring: circumference = 2π × 38 ≈ 239
@@ -135,9 +135,9 @@ onMounted(async () => {
     const err = e as { response?: { status?: number } }
     const status = err.response?.status
     if (status === 400 || status === 404) {
-      errorMessage.value = 'This verification link is invalid or has already been used.'
+      errorMessage.value = 'Эта ссылка подтверждения недействительна или уже использована.'
     } else if (status === 410) {
-      errorMessage.value = 'This verification link has expired. Please register again.'
+      errorMessage.value = 'Срок действия ссылки подтверждения истёк. Пожалуйста, зарегистрируйтесь заново.'
     }
     state.value = 'error'
   }

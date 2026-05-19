@@ -8,8 +8,8 @@
             <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8l-6-6zm-1 1.5L18.5 9H13V3.5zM6 20V4h5v7h7v9H6z"/>
           </svg>
         </div>
-        <h1 class="text-2xl font-bold text-white">Create account</h1>
-        <p class="text-primary-300 text-sm mt-1">Join KubSTU Docs today</p>
+        <h1 class="text-2xl font-bold text-white">Создать аккаунт</h1>
+        <p class="text-primary-300 text-sm mt-1">Присоединяйтесь к KubSTU Docs</p>
       </div>
 
       <!-- Success state -->
@@ -19,11 +19,11 @@
             <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 8l7.89 5.26a2 2 0 002.22 0L21 8M5 19h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z" />
           </svg>
         </div>
-        <h2 class="font-semibold text-slate-800 text-lg">Check your email</h2>
+        <h2 class="font-semibold text-slate-800 text-lg">Проверьте почту</h2>
         <p class="text-slate-500 text-sm mt-2">
-          We sent a verification link to <strong>{{ form.email }}</strong>. Click the link to activate your account.
+          Мы отправили ссылку для подтверждения на <strong>{{ form.email }}</strong>. Перейдите по ней, чтобы активировать аккаунт.
         </p>
-        <p class="text-xs text-slate-400 mt-3">The link expires in 45 minutes.</p>
+        <p class="text-xs text-slate-400 mt-3">Срок действия ссылки — 45 минут.</p>
       </div>
 
       <!-- Form -->
@@ -43,16 +43,16 @@
               required
               @blur="checkEmail"
             />
-            <p v-if="emailStatus === 'taken'" class="error-text">Email already registered.</p>
-            <p v-else-if="emailStatus === 'available'" class="text-sm text-green-600">Email is available.</p>
+            <p v-if="emailStatus === 'taken'" class="error-text">Этот email уже зарегистрирован.</p>
+            <p v-else-if="emailStatus === 'available'" class="text-sm text-green-600">Email свободен.</p>
             <p v-if="errors.email" class="error-text">{{ errors.email }}</p>
           </div>
 
           <!-- Username (optional) -->
           <div class="form-group">
             <label class="label" for="username">
-              Username
-              <span class="text-slate-400 font-normal">(optional)</span>
+              Имя пользователя
+              <span class="text-slate-400 font-normal">(необязательно)</span>
             </label>
             <input
               id="username"
@@ -61,17 +61,17 @@
               :class="{ 'input-error': errors.username || usernameStatus === 'taken' }"
               type="text"
               autocomplete="username"
-              placeholder="auto-generated if blank"
+              placeholder="сгенерируется автоматически"
               @blur="checkUsername"
             />
-            <p v-if="usernameStatus === 'taken'" class="error-text">Username already taken.</p>
-            <p v-else-if="usernameStatus === 'available'" class="text-sm text-green-600">Username is available.</p>
+            <p v-if="usernameStatus === 'taken'" class="error-text">Это имя уже занято.</p>
+            <p v-else-if="usernameStatus === 'available'" class="text-sm text-green-600">Имя свободно.</p>
             <p v-if="errors.username" class="error-text">{{ errors.username }}</p>
           </div>
 
           <!-- Password -->
           <div class="form-group">
-            <label class="label" for="password">Password</label>
+            <label class="label" for="password">Пароль</label>
             <div class="relative">
               <input
                 id="password"
@@ -80,7 +80,7 @@
                 :class="{ 'input-error': errors.password }"
                 :type="showPassword ? 'text' : 'password'"
                 autocomplete="new-password"
-                placeholder="at least 8 characters"
+                placeholder="минимум 8 символов"
                 required
               />
               <button
@@ -110,14 +110,14 @@
               <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"/>
               <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8H4z"/>
             </svg>
-            {{ isLoading ? 'Creating account…' : 'Create account' }}
+            {{ isLoading ? 'Создание аккаунта…' : 'Создать аккаунт' }}
           </button>
         </form>
       </div>
 
       <p class="text-center text-primary-300 text-sm mt-6">
-        Already have an account?
-        <RouterLink to="/login" class="text-white font-medium hover:underline">Sign in</RouterLink>
+        Уже есть аккаунт?
+        <RouterLink to="/login" class="text-white font-medium hover:underline">Войти</RouterLink>
       </p>
     </div>
   </div>
@@ -173,8 +173,8 @@ async function handleRegister() {
     if (data?.email) errors.email = data.email[0]
     else if (data?.username) errors.username = data.username[0]
     else if (data?.password) errors.password = data.password[0]
-    else if (err.response?.status === 429) errors.global = 'Too many attempts. Try again later.'
-    else errors.global = 'Something went wrong. Please try again.'
+    else if (err.response?.status === 429) errors.global = 'Слишком много попыток. Попробуйте позже.'
+    else errors.global = 'Что-то пошло не так. Попробуйте ещё раз.'
   } finally {
     isLoading.value = false
   }

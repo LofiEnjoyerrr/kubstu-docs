@@ -12,11 +12,15 @@ declare module '@tiptap/core' {
 }
 
 /**
- * Block-level node. Renders as a thin separator in the editor and as a
- * proper ``<w:br w:type="page"/>`` when exported. Optionally carries
+ * Block-level node. Renders as a wide "between-pages" gap in the editor and
+ * as a proper ``<w:br w:type="page"/>`` when exported. Optionally carries
  * ``restartNumbering`` + ``numberStart`` so the document can reset the
- * page-number sequence at this break (matching the Word "Section break,
- * next page" feature with "Restart at" page numbering).
+ * page-number sequence at this break.
+ *
+ * The actual chrome that makes the gap look like the bottom of one sheet
+ * and the top of the next (paper edges, shadows, header/footer previews) is
+ * rendered by the parent editor view using Vue — this node only commits the
+ * skeleton DOM so ProseMirror can find/select it.
  */
 export const PageBreak = Node.create({
   name: 'pageBreak',
@@ -61,7 +65,9 @@ export const PageBreak = Node.create({
         class: 'page-break',
         contenteditable: 'false',
       }),
-      ['span', { class: 'page-break-label' }, 'Page break'],
+      ['div', { class: 'page-break-paper-end' }],
+      ['div', { class: 'page-break-gap' }, ['span', { class: 'page-break-label' }, 'Page break']],
+      ['div', { class: 'page-break-paper-start' }],
     ]
   },
 

@@ -3,7 +3,7 @@
     <!-- Top bar -->
     <header class="fixed inset-x-0 top-14 z-30 h-14 bg-white border-b border-slate-200 flex items-center px-4 gap-3 shadow-sm">
       <!-- Back -->
-      <RouterLink to="/dashboard" class="btn-ghost btn-sm p-1.5 rounded-lg" title="Back to dashboard">
+      <RouterLink to="/dashboard" class="btn-ghost btn-sm p-1.5 rounded-lg" title="Назад в личный кабинет">
         <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
           <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10 19l-7-7m0 0l7-7m-7 7h18" />
         </svg>
@@ -15,17 +15,17 @@
           v-if="myRole === 'owner'"
           v-model="editableTitle"
           class="flex-1 min-w-0 font-semibold text-slate-800 bg-transparent border-none outline-none focus:ring-0 text-base truncate"
-          placeholder="Untitled"
+          placeholder="Без названия"
           @blur="saveTitle"
           @keydown.enter.prevent="($event.target as HTMLInputElement).blur()"
         />
         <span v-else class="font-semibold text-slate-800 text-base truncate">
-          {{ doc?.title || 'Untitled' }}
+          {{ doc?.title || 'Без названия' }}
         </span>
 
         <Transition name="fade">
-          <span v-if="isSaving" class="text-xs text-slate-400 shrink-0">Saving…</span>
-          <span v-else-if="lastSaved" class="text-xs text-slate-400 shrink-0">Saved</span>
+          <span v-if="isSaving" class="text-xs text-slate-400 shrink-0">Сохранение…</span>
+          <span v-else-if="lastSaved" class="text-xs text-slate-400 shrink-0">Сохранено</span>
         </Transition>
       </div>
 
@@ -37,11 +37,11 @@
           :class="isConnected ? 'bg-green-100 text-green-700' : 'bg-slate-100 text-slate-500'"
         >
           <div class="w-1.5 h-1.5 rounded-full" :class="isConnected ? 'bg-green-500' : 'bg-slate-400'" />
-          {{ isConnected ? 'Live' : 'Offline' }}
+          {{ isConnected ? 'В сети' : 'Не в сети' }}
         </div>
 
         <!-- Viewer badge -->
-        <span v-if="myRole === 'viewer'" class="badge-slate text-xs">View only</span>
+        <span v-if="myRole === 'viewer'" class="badge-slate text-xs">Только просмотр</span>
 
         <!-- Online collaborators -->
         <div v-if="collaborators.length" class="flex -space-x-2">
@@ -78,7 +78,7 @@
             <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M7 8h10M7 12h4m1 8l-4-4H5a2 2 0 01-2-2V6a2 2 0 012-2h14a2 2 0 012 2v8a2 2 0 01-2 2h-3l-4 4z" />
             </svg>
-            Comment
+            Комментарий
           </button>
         </Transition>
 
@@ -88,7 +88,7 @@
           :class="showComments
             ? 'border-primary-300 bg-primary-50 text-primary-700'
             : 'border-slate-200 bg-white text-slate-600 hover:bg-slate-50'"
-          title="Toggle comments"
+          title="Показать/скрыть комментарии"
           @click="showComments = !showComments"
         >
           <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -108,7 +108,7 @@
             <path v-if="doc.is_public" stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3.055 11H5a2 2 0 012 2v1a2 2 0 002 2 2 2 0 012 2v2.945M8 3.935V5.5A2.5 2.5 0 0010.5 8h.5a2 2 0 012 2 2 2 0 104 0 2 2 0 012-2h1.064M15 20.488V18a2 2 0 012-2h3.064M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
             <path v-else stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z" />
           </svg>
-          {{ doc.is_public ? 'Public' : 'Private' }}
+          {{ doc.is_public ? 'Публичный' : 'Приватный' }}
         </button>
 
         <!-- Share -->
@@ -116,7 +116,7 @@
           <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
             <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8.684 13.342C8.886 12.938 9 12.482 9 12c0-.482-.114-.938-.316-1.342m0 2.684a3 3 0 110-2.684m0 2.684l6.632 3.316m-6.632-6l6.632-3.316m0 0a3 3 0 105.367-2.684 3 3 0 00-5.367 2.684zm0 9.316a3 3 0 105.368 2.684 3 3 0 00-5.368-2.684z" />
           </svg>
-          Share
+          Поделиться
         </button>
       </div>
     </header>
@@ -133,7 +133,7 @@
       <div v-else-if="loadError" class="flex-1 flex items-center justify-center px-4">
         <div class="text-center">
           <p class="text-slate-600 mb-4">{{ loadError }}</p>
-          <RouterLink to="/dashboard" class="btn-primary">Go to Dashboard</RouterLink>
+          <RouterLink to="/dashboard" class="btn-primary">В личный кабинет</RouterLink>
         </div>
       </div>
 
@@ -182,10 +182,10 @@
       >
         <div class="absolute inset-0 bg-black/40" />
         <div class="relative w-full max-w-md bg-white rounded-2xl shadow-xl p-6">
-          <h2 class="font-semibold text-slate-800 mb-3">Add comment</h2>
+          <h2 class="font-semibold text-slate-800 mb-3">Добавить комментарий</h2>
 
           <div v-if="pendingQuote" class="mb-4 bg-amber-50 border-l-4 border-amber-400 rounded-r-lg px-3 py-2">
-            <p class="text-xs text-amber-700 font-medium mb-0.5">Selected text</p>
+            <p class="text-xs text-amber-700 font-medium mb-0.5">Выделенный текст</p>
             <p class="text-sm text-slate-700 line-clamp-3 italic">"{{ pendingQuote }}"</p>
           </div>
 
@@ -194,15 +194,15 @@
               v-model="commentText"
               class="input w-full resize-none"
               rows="3"
-              placeholder="Write a comment…"
+              placeholder="Напишите комментарий…"
               autofocus
               required
             />
             <p v-if="commentError" class="error-text mt-2">{{ commentError }}</p>
             <div class="flex gap-2 justify-end mt-4">
-              <button type="button" class="btn-secondary" @click="showAddComment = false">Cancel</button>
+              <button type="button" class="btn-secondary" @click="showAddComment = false">Отмена</button>
               <button type="submit" class="btn-primary" :disabled="isSubmittingComment || !commentText.trim()">
-                {{ isSubmittingComment ? 'Posting…' : 'Post comment' }}
+                {{ isSubmittingComment ? 'Публикация…' : 'Опубликовать' }}
               </button>
             </div>
           </form>
@@ -435,9 +435,9 @@ onMounted(async () => {
   } catch (e: unknown) {
     const err = e as { response?: { status?: number } }
     if (err.response?.status === 403 || err.response?.status === 404) {
-      loadError.value = 'This document does not exist or you do not have access.'
+      loadError.value = 'Документ не существует или у вас нет к нему доступа.'
     } else {
-      loadError.value = 'Failed to load the document.'
+      loadError.value = 'Не удалось загрузить документ.'
     }
   } finally {
     isLoading.value = false
@@ -491,7 +491,7 @@ async function submitComment() {
     showAddComment.value = false
     commentText.value = ''
   } catch {
-    commentError.value = 'Failed to post comment. Please try again.'
+    commentError.value = 'Не удалось опубликовать комментарий. Попробуйте ещё раз.'
   } finally {
     isSubmittingComment.value = false
   }

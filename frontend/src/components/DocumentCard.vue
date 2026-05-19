@@ -12,17 +12,17 @@
       </div>
       <div class="flex-1 min-w-0">
         <h3 class="font-semibold text-slate-800 text-sm leading-tight group-hover:text-primary-700 transition-colors truncate">
-          {{ doc.title || 'Untitled' }}
+          {{ doc.title || 'Без названия' }}
         </h3>
-        <p class="text-xs text-slate-500 mt-0.5">by {{ doc.owner }}</p>
+        <p class="text-xs text-slate-500 mt-0.5">автор: {{ doc.owner }}</p>
       </div>
     </div>
 
     <!-- Meta -->
     <div class="flex items-center justify-between">
       <div class="flex items-center gap-1.5">
-        <span v-if="doc.is_public" class="badge-blue">Public</span>
-        <span v-else class="badge-slate">Private</span>
+        <span v-if="doc.is_public" class="badge-blue">Публичный</span>
+        <span v-else class="badge-slate">Приватный</span>
       </div>
       <time class="text-xs text-slate-400">{{ relativeTime }}</time>
     </div>
@@ -39,12 +39,12 @@ const relativeTime = computed(() => {
   const d = new Date(props.doc.dt_updated)
   const diff = Date.now() - d.getTime()
   const mins = Math.floor(diff / 60000)
-  if (mins < 1) return 'just now'
-  if (mins < 60) return `${mins}m ago`
+  if (mins < 1) return 'только что'
+  if (mins < 60) return `${mins} мин назад`
   const hours = Math.floor(mins / 60)
-  if (hours < 24) return `${hours}h ago`
+  if (hours < 24) return `${hours} ч назад`
   const days = Math.floor(hours / 24)
-  if (days < 30) return `${days}d ago`
-  return d.toLocaleDateString()
+  if (days < 30) return `${days} дн назад`
+  return d.toLocaleDateString('ru-RU')
 })
 </script>

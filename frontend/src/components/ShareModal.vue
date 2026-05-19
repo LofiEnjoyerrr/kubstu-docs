@@ -5,7 +5,7 @@
       <div class="relative w-full max-w-lg bg-white rounded-2xl shadow-xl flex flex-col max-h-[90vh]">
         <!-- Header -->
         <div class="flex items-center justify-between px-5 py-4 border-b border-slate-200">
-          <h2 class="font-semibold text-slate-800">Share document</h2>
+          <h2 class="font-semibold text-slate-800">Поделиться документом</h2>
           <button class="btn-ghost btn-sm rounded-full p-1" @click="$emit('close')">
             <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12" />
@@ -16,13 +16,13 @@
         <div class="flex-1 overflow-y-auto p-5 flex flex-col gap-5">
           <!-- Search user -->
           <div>
-            <label class="label">Add people</label>
+            <label class="label">Добавить пользователей</label>
             <div class="relative">
               <input
                 v-model="searchQuery"
                 class="input pr-10"
                 type="text"
-                placeholder="Search by username…"
+                placeholder="Поиск по имени пользователя…"
                 @input="onSearch"
               />
               <div v-if="isSearching" class="absolute right-3 top-1/2 -translate-y-1/2">
@@ -65,12 +65,12 @@
               <div class="flex-1 min-w-0">
                 <p class="text-sm font-medium text-slate-800 truncate">{{ selectedUser.username }}</p>
               </div>
-              <select v-model="newRole" class="input !w-28">
-                <option value="viewer">Viewer</option>
-                <option value="editor">Editor</option>
+              <select v-model="newRole" class="input !w-32">
+                <option value="viewer">Наблюдатель</option>
+                <option value="editor">Редактор</option>
               </select>
               <button class="btn-primary btn-sm" :disabled="isAdding" @click="addAccess">
-                {{ isAdding ? 'Adding…' : 'Add' }}
+                {{ isAdding ? 'Добавление…' : 'Добавить' }}
               </button>
               <button class="btn-ghost btn-sm p-1 rounded-full" @click="selectedUser = null">
                 <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -87,10 +87,10 @@
 
           <!-- Existing accesses -->
           <div>
-            <h3 class="text-sm font-medium text-slate-700 mb-3">People with access</h3>
+            <h3 class="text-sm font-medium text-slate-700 mb-3">Пользователи с доступом</h3>
 
             <div v-if="!accesses.length" class="text-sm text-slate-400 text-center py-4">
-              No one else has access yet.
+              Пока никто не имеет доступа.
             </div>
 
             <ul class="flex flex-col gap-2">
@@ -111,15 +111,15 @@
                 </div>
                 <select
                   :value="access.role"
-                  class="input !w-28"
+                  class="input !w-32"
                   @change="changeRole(access.id, ($event.target as HTMLSelectElement).value as 'viewer' | 'editor')"
                 >
-                  <option value="viewer">Viewer</option>
-                  <option value="editor">Editor</option>
+                  <option value="viewer">Наблюдатель</option>
+                  <option value="editor">Редактор</option>
                 </select>
                 <button
                   class="btn-ghost btn-sm p-1 rounded-full text-red-500 hover:text-red-600 hover:bg-red-50"
-                  :title="`Remove ${access.username}`"
+                  :title="`Удалить ${access.username}`"
                   @click="removeAccess(access.id)"
                 >
                   <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -191,7 +191,7 @@ async function addAccess() {
   } catch (e: unknown) {
     const err = e as { response?: { data?: Record<string, string[]> } }
     const detail = Object.values(err.response?.data ?? {}).flat().join(' ')
-    addError.value = detail || 'Failed to add access.'
+    addError.value = detail || 'Не удалось предоставить доступ.'
   } finally {
     isAdding.value = false
   }

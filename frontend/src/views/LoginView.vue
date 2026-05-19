@@ -9,14 +9,14 @@
           </svg>
         </div>
         <h1 class="text-2xl font-bold text-white">KubSTU Docs</h1>
-        <p class="text-primary-300 text-sm mt-1">Sign in with your username or email</p>
+        <p class="text-primary-300 text-sm mt-1">Войдите, используя имя пользователя или email</p>
       </div>
 
       <!-- Card -->
       <div class="card p-6 shadow-2xl">
         <form @submit.prevent="handleLogin" class="flex flex-col gap-4">
           <div class="form-group">
-            <label class="label" for="username">Username or email</label>
+            <label class="label" for="username">Имя пользователя или email</label>
             <input
               id="username"
               v-model="form.username"
@@ -24,14 +24,14 @@
               :class="{ 'input-error': errors.username }"
               type="text"
               autocomplete="username"
-              placeholder="username or you@example.com"
+              placeholder="username или you@example.com"
               required
             />
             <p v-if="errors.username" class="error-text">{{ errors.username }}</p>
           </div>
 
           <div class="form-group">
-            <label class="label" for="password">Password</label>
+            <label class="label" for="password">Пароль</label>
             <div class="relative">
               <input
                 id="password"
@@ -69,20 +69,20 @@
               <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"/>
               <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8H4z"/>
             </svg>
-            {{ isLoading ? 'Signing in…' : 'Sign in' }}
+            {{ isLoading ? 'Вход…' : 'Войти' }}
           </button>
         </form>
 
         <div class="mt-4 text-center text-sm text-slate-500">
           <RouterLink to="/forgot-password" class="text-primary-600 hover:text-primary-800 font-medium">
-            Forgot password?
+            Забыли пароль?
           </RouterLink>
         </div>
       </div>
 
       <p class="text-center text-primary-300 text-sm mt-6">
-        Don't have an account?
-        <RouterLink to="/register" class="text-white font-medium hover:underline">Sign up</RouterLink>
+        Нет аккаунта?
+        <RouterLink to="/register" class="text-white font-medium hover:underline">Зарегистрироваться</RouterLink>
       </p>
     </div>
   </div>
@@ -118,9 +118,9 @@ async function handleLogin() {
     if (data?.username) errors.username = data.username[0]
     else if (data?.password) errors.password = data.password[0]
     else if (data?.non_field_errors) errors.global = data.non_field_errors[0]
-    else if (err.response?.status === 400) errors.global = 'Invalid credentials.'
-    else if (err.response?.status === 429) errors.global = 'Too many attempts. Try again later.'
-    else errors.global = 'Something went wrong. Please try again.'
+    else if (err.response?.status === 400) errors.global = 'Неверные учётные данные.'
+    else if (err.response?.status === 429) errors.global = 'Слишком много попыток. Попробуйте позже.'
+    else errors.global = 'Что-то пошло не так. Попробуйте ещё раз.'
   } finally {
     isLoading.value = false
   }

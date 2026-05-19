@@ -6,9 +6,9 @@
           <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
             <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10 19l-7-7m0 0l7-7m-7 7h18" />
           </svg>
-          Dashboard
+          Личный кабинет
         </RouterLink>
-        <h1 class="text-2xl font-bold text-slate-800 mt-2">Profile settings</h1>
+        <h1 class="text-2xl font-bold text-slate-800 mt-2">Настройки профиля</h1>
       </div>
 
       <div class="card p-6 flex flex-col gap-6">
@@ -19,7 +19,7 @@
               <img
                 v-if="previewUrl || auth.user?.avatar"
                 :src="previewUrl || resolveMediaUrl(auth.user?.avatar)!"
-                alt="Avatar"
+                alt="Аватар"
                 class="w-full h-full object-cover"
               />
               <div
@@ -32,7 +32,7 @@
             </div>
             <button
               class="absolute -bottom-1 -right-1 w-7 h-7 rounded-full bg-primary-600 text-white flex items-center justify-center hover:bg-primary-700 transition-colors shadow-md"
-              title="Change avatar"
+              title="Сменить аватар"
               @click="avatarInput?.click()"
             >
               <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -51,7 +51,7 @@
             <p class="font-semibold text-slate-800">{{ auth.user?.username }}</p>
             <p class="text-sm text-slate-500">{{ auth.user?.email }}</p>
             <p class="text-xs text-slate-400 mt-0.5">
-              Member since {{ joinedDate }}
+              На сервисе с {{ joinedDate }}
             </p>
           </div>
         </div>
@@ -62,31 +62,31 @@
         <form @submit.prevent="saveProfile" class="flex flex-col gap-4">
           <div class="grid grid-cols-2 gap-4">
             <div class="form-group">
-              <label class="label" for="first-name">First name</label>
+              <label class="label" for="first-name">Имя</label>
               <input
                 id="first-name"
                 v-model="form.first_name"
                 class="input"
                 type="text"
                 autocomplete="given-name"
-                placeholder="John"
+                placeholder="Иван"
               />
             </div>
             <div class="form-group">
-              <label class="label" for="last-name">Last name</label>
+              <label class="label" for="last-name">Фамилия</label>
               <input
                 id="last-name"
                 v-model="form.last_name"
                 class="input"
                 type="text"
                 autocomplete="family-name"
-                placeholder="Doe"
+                placeholder="Иванов"
               />
             </div>
           </div>
 
           <div class="form-group">
-            <label class="label" for="username">Username</label>
+            <label class="label" for="username">Имя пользователя</label>
             <input
               id="username"
               v-model="form.username"
@@ -101,11 +101,11 @@
           <div class="form-group">
             <label class="label">Email</label>
             <input :value="auth.user?.email" class="input bg-slate-50" type="email" disabled />
-            <p class="text-xs text-slate-400 mt-1">Email cannot be changed.</p>
+            <p class="text-xs text-slate-400 mt-1">Email изменить нельзя.</p>
           </div>
 
           <p v-if="saveSuccess" class="text-sm text-green-600 bg-green-50 rounded-lg px-3 py-2">
-            Profile updated successfully.
+            Профиль успешно обновлён.
           </p>
           <p v-if="saveError" class="error-text bg-red-50 rounded-lg px-3 py-2">{{ saveError }}</p>
 
@@ -115,7 +115,7 @@
                 <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"/>
                 <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8H4z"/>
               </svg>
-              {{ isSaving ? 'Saving…' : 'Save changes' }}
+              {{ isSaving ? 'Сохранение…' : 'Сохранить изменения' }}
             </button>
           </div>
         </form>
@@ -196,7 +196,7 @@ async function saveProfile() {
     const err = e as { response?: { data?: Record<string, string[]> } }
     const data = err.response?.data
     if (data?.username) errors.username = data.username[0]
-    else saveError.value = 'Failed to save changes. Please try again.'
+    else saveError.value = 'Не удалось сохранить изменения. Попробуйте ещё раз.'
   } finally {
     isSaving.value = false
   }

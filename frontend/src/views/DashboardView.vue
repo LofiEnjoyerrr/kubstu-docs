@@ -4,16 +4,16 @@
       <!-- Header -->
       <div class="flex items-center justify-between mb-8">
         <div>
-          <h1 class="text-2xl font-bold text-slate-800">My Documents</h1>
+          <h1 class="text-2xl font-bold text-slate-800">Мои документы</h1>
           <p class="text-slate-500 text-sm mt-0.5">
-            Welcome back, {{ auth.user?.username }}
+            С возвращением, {{ auth.user?.username }}
           </p>
         </div>
         <button class="btn-primary" @click="showNewDoc = true">
           <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
             <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4" />
           </svg>
-          New document
+          Новый документ
         </button>
       </div>
 
@@ -26,7 +26,7 @@
           <input
             v-model="searchQuery"
             type="search"
-            placeholder="Search public documents…"
+            placeholder="Поиск публичных документов…"
             class="input pl-9 w-full"
             @input="onSearchInput"
           />
@@ -43,13 +43,13 @@
       <template v-if="searchQuery.trim()">
         <section class="mb-10">
           <h2 class="text-sm font-semibold text-slate-500 uppercase tracking-wider mb-4">
-            Search results{{ searchResults.length ? ` (${searchResults.length})` : '' }}
+            Результаты поиска{{ searchResults.length ? ` (${searchResults.length})` : '' }}
           </h2>
           <div v-if="!isSearching && !searchResults.length" class="card p-10 text-center text-slate-400">
             <svg class="w-10 h-10 mx-auto mb-3 opacity-40" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9.172 16.172a4 4 0 015.656 0M9 10h.01M15 10h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
             </svg>
-            <p class="text-sm">No public documents found for "{{ searchQuery }}"</p>
+            <p class="text-sm">Публичные документы по запросу «{{ searchQuery }}» не найдены</p>
           </div>
           <div v-else class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
             <DocumentCard v-for="doc in searchResults" :key="doc.id" :doc="doc" />
@@ -70,13 +70,13 @@
         <template v-else>
           <section class="mb-10">
             <h2 class="text-sm font-semibold text-slate-500 uppercase tracking-wider mb-4">
-              Created by me ({{ docs.ownerDocuments.length }})
+              Созданные мной ({{ docs.ownerDocuments.length }})
             </h2>
             <div v-if="!docs.ownerDocuments.length" class="card p-10 text-center text-slate-400">
               <svg class="w-10 h-10 mx-auto mb-3 opacity-40" fill="currentColor" viewBox="0 0 24 24">
                 <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8l-6-6zm-1 1.5L18.5 9H13V3.5zM6 20V4h5v7h7v9H6z"/>
               </svg>
-              <p class="text-sm">No documents yet. Create your first one!</p>
+              <p class="text-sm">Документов пока нет. Создайте первый!</p>
             </div>
             <div v-else class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
               <DocumentCard v-for="doc in docs.ownerDocuments" :key="doc.id" :doc="doc" />
@@ -85,7 +85,7 @@
 
           <section v-if="docs.openedDocuments.length">
             <h2 class="text-sm font-semibold text-slate-500 uppercase tracking-wider mb-4">
-              Shared with me ({{ docs.openedDocuments.length }})
+              Доступные мне ({{ docs.openedDocuments.length }})
             </h2>
             <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
               <DocumentCard v-for="doc in docs.openedDocuments" :key="doc.id" :doc="doc" />
@@ -100,25 +100,25 @@
       <div v-if="showNewDoc" class="fixed inset-0 z-50 flex items-center justify-center p-4" @mousedown.self="showNewDoc = false">
         <div class="absolute inset-0 bg-black/40" />
         <div class="relative w-full max-w-sm bg-white rounded-2xl shadow-xl p-6">
-          <h2 class="font-semibold text-slate-800 mb-4">New document</h2>
+          <h2 class="font-semibold text-slate-800 mb-4">Новый документ</h2>
           <form @submit.prevent="createDocument">
             <div class="form-group mb-4">
-              <label class="label" for="new-title">Title</label>
+              <label class="label" for="new-title">Заголовок</label>
               <input
                 id="new-title"
                 v-model="newTitle"
                 class="input"
                 type="text"
-                placeholder="Untitled document"
+                placeholder="Документ без названия"
                 autofocus
                 required
               />
             </div>
             <p v-if="createError" class="error-text mb-3">{{ createError }}</p>
             <div class="flex gap-2 justify-end">
-              <button type="button" class="btn-secondary" @click="showNewDoc = false">Cancel</button>
+              <button type="button" class="btn-secondary" @click="showNewDoc = false">Отмена</button>
               <button type="submit" class="btn-primary" :disabled="isCreating">
-                {{ isCreating ? 'Creating…' : 'Create' }}
+                {{ isCreating ? 'Создание…' : 'Создать' }}
               </button>
             </div>
           </form>
@@ -184,12 +184,12 @@ async function createDocument() {
   createError.value = ''
   isCreating.value = true
   try {
-    const doc = await docs.createDocument(newTitle.value.trim() || 'Untitled')
+    const doc = await docs.createDocument(newTitle.value.trim() || 'Без названия')
     showNewDoc.value = false
     newTitle.value = ''
     router.push(`/documents/${doc.id}`)
   } catch {
-    createError.value = 'Failed to create document.'
+    createError.value = 'Не удалось создать документ.'
   } finally {
     isCreating.value = false
   }

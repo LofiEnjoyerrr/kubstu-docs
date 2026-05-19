@@ -8,8 +8,8 @@
       :page-layout="pageLayout"
       :show-page-numbers="showPageNumbers"
       :page-number-start="pageNumberStart"
-      :header-active="headerActive"
-      :footer-active="footerActive"
+      :header-active="headerOpen"
+      :footer-active="footerOpen"
       :header-json="latestHeaderJson"
       :footer-json="latestFooterJson"
       :paragraph-attrs="currentParagraphAttrs"
@@ -24,50 +24,83 @@
 
     <div class="flex-1 overflow-y-auto">
       <!-- Outer "paper" container — width = page width -->
-      <div class="mx-auto my-8 transition-[width] duration-150" :style="paperWrapperStyle">
-        <!-- HEADER band -->
+      <div class="mx-auto my-8 paper-stack" :style="paperWrapperStyle">
+        <!-- HEADER band for the first page -->
         <div
           v-if="headerVisible"
-          class="bg-white shadow-sm rounded-t-md border-b border-dashed border-slate-200"
+          class="paper-band paper-band-top"
           :style="bandStyle"
+          @dblclick="activateHeader"
         >
-          <div class="text-[10px] uppercase tracking-wider text-slate-400 px-1 pt-1">Header</div>
+          <div class="paper-band-label">
+            Верхний колонтитул · стр. {{ firstPageNumber }} из {{ pageCount }}
+            <button
+              v-if="headerOpen"
+              type="button"
+              class="paper-band-close"
+              title="Закрыть верхний колонтитул"
+              @click.stop="closeHeader"
+            >✕</button>
+          </div>
           <EditorContent
             :editor="headerEditor"
             class="tiptap-mini focus:outline-none px-1"
           />
         </div>
-
-        <!-- MAIN page -->
+        <!-- Sentinel: dbl-click on the empty top margin opens the header -->
         <div
-          class="bg-white shadow-lg"
+          v-else
+          class="paper-band-sentinel paper-band-sentinel-top"
+          :style="sentinelStyle"
+          title="Двойной клик — добавить верхний колонтитул"
+          @dblclick="activateHeader"
+        />
+
+        <!-- MAIN paper — one tall sheet visually broken by page/section breaks -->
+        <div
+          class="bg-white shadow-lg paper-body"
           :class="[headerVisible ? '' : 'rounded-t-md', footerVisible ? '' : 'rounded-b-md']"
           :style="mainStyle"
         >
           <EditorContent :editor="editor" class="tiptap-editor focus:outline-none min-h-[60vh]" />
         </div>
 
-        <!-- FOOTER band -->
+        <!-- FOOTER band for the last page -->
         <div
           v-if="footerVisible"
-          class="bg-white shadow-sm rounded-b-md border-t border-dashed border-slate-200"
+          class="paper-band paper-band-bottom"
           :style="bandStyle"
+          @dblclick="activateFooter"
         >
           <EditorContent
             :editor="footerEditor"
             class="tiptap-mini focus:outline-none px-1"
           />
-          <div class="text-[10px] uppercase tracking-wider text-slate-400 px-1 pb-1 text-right">
-            Footer · Page {{ firstPageNumber }} of {{ pageCount }}
+          <div class="paper-band-label paper-band-label-bottom">
+            Нижний колонтитул · стр. {{ lastPageNumber }} из {{ pageCount }}
+            <button
+              v-if="footerOpen"
+              type="button"
+              class="paper-band-close"
+              title="Закрыть нижний колонтитул"
+              @click.stop="closeFooter"
+            >✕</button>
           </div>
         </div>
+        <div
+          v-else
+          class="paper-band-sentinel paper-band-sentinel-bottom"
+          :style="sentinelStyle"
+          title="Double-click to add a footer"
+          @dblclick="activateFooter"
+        />
       </div>
     </div>
   </div>
 </template>
 
 <script setup lang="ts">
-import { watch, computed, onBeforeUnmount, ref, nextTick } from 'vue'
+import { watch, computed, onBeforeUnmount, onMounted, ref, nextTick } from 'vue'
 import { useEditor, EditorContent, Editor } from '@tiptap/vue-3'
 import { Extension, Editor as CoreEditor } from '@tiptap/core'
 import StarterKit from '@tiptap/starter-kit'
@@ -98,6 +131,7 @@ import { LineHeight } from './LineHeight'
 import { FindReplace } from './FindReplace'
 import { ParagraphSpacing } from './ParagraphSpacing'
 import { PageBreak } from './PageBreak'
+import { SectionBreak } from './SectionBreak'
 import { PageNumber } from './PageNumber'
 import { paginate } from './paginate'
 import apiClient from '../../api/client'
@@ -199,6 +233,7 @@ const editor = useEditor({
     TaskList,
     TaskItem.configure({ nested: true }),
     PageBreak,
+    SectionBreak,
     FindReplace,
     RemoteCursors,
     CommentHighlights,
@@ -285,8 +320,15 @@ const editor = useEditor({
 
 // ── header / footer mini editors ────────────────────────────────────────────
 
-const headerActive = ref(false)
-const footerActive = ref(false)
+// Tri-state user choice for header/footer visibility. ``null`` means the
+// user hasn't yet expressed a preference — in that case we fall back to
+// "is there any content in the band?" so existing docs open with their
+// header/footer visible. Once the user explicitly toggles, we honor that
+// choice and ignore the content-presence default. This is what fixes the
+// long-standing bug where "Close header" did nothing after typing
+// because the visibility was hard-tied to ``hasContent``.
+const headerExplicit = ref<boolean | null>(null)
+const footerExplicit = ref<boolean | null>(null)
 
 const latestHeaderJson = ref<unknown>(parseBandContent(props.headerContent))
 const latestFooterJson = ref<unknown>(parseBandContent(props.footerContent))
@@ -301,14 +343,6 @@ function makeBandEditor(initial: unknown, placeholder: string, onUpdate: (json: 
       onUpdate(json)
       if (placeholder.toLowerCase().includes('header')) latestHeaderJson.value = json
       else latestFooterJson.value = json
-    },
-    onFocus: () => {
-      if (placeholder.toLowerCase().includes('header')) headerActive.value = true
-      else footerActive.value = true
-    },
-    onBlur: () => {
-      headerActive.value = false
-      footerActive.value = false
     },
   })
 }
@@ -334,12 +368,20 @@ function parseBandContent(s: string | undefined): unknown {
 
 const pageCount = ref(1)
 const firstPageNumber = ref(1)
+const lastPageNumber = ref(1)
+const pageNumbersByIdx = ref<number[]>([1])
 
 function refreshPagination(ed: CoreEditor | Editor) {
   const info = paginate(ed.getJSON() as any, props.pageNumberStart ?? 1)
   pageCount.value = info.pageCount
   firstPageNumber.value = info.pageNumbers[0] ?? 1
-  updatePageNumberChipLabels()
+  lastPageNumber.value = info.pageNumbers[info.pageNumbers.length - 1] ?? 1
+  pageNumbersByIdx.value = info.pageNumbers
+  // Update labels in mini editors and in the in-body page-break previews.
+  nextTick(() => {
+    updatePageNumberChipLabels()
+    updatePageBreakChrome(ed)
+  })
 }
 
 function updatePageNumberChipLabels() {
@@ -350,12 +392,39 @@ function updatePageNumberChipLabels() {
   for (const ed of [headerEditor, footerEditor]) {
     const root = ed.view?.dom as HTMLElement | undefined
     if (!root) continue
+    const isHeader = ed === headerEditor
+    const visible = isHeader ? firstPageNumber.value : lastPageNumber.value
     root.querySelectorAll('[data-page-number]').forEach((el) => {
       const kind = (el as HTMLElement).dataset.kind ?? 'number'
       if (kind === 'count') (el as HTMLElement).textContent = fmt(pageCount.value)
-      else (el as HTMLElement).textContent = fmt(firstPageNumber.value)
+      else (el as HTMLElement).textContent = fmt(visible)
     })
   }
+}
+
+/**
+ * Walks the rendered editor DOM and decorates every page-break / section-break
+ * with a label that names the page numbers on either side. This is read-only
+ * eye candy so the document looks like a real stack of paper.
+ */
+function updatePageBreakChrome(ed: CoreEditor | Editor) {
+  const root = ed.view?.dom as HTMLElement | undefined
+  if (!root) return
+  const breaks = Array.from(
+    root.querySelectorAll<HTMLElement>('[data-page-break], [data-section-break]'),
+  )
+  const pageNums = pageNumbersByIdx.value
+  breaks.forEach((br, i) => {
+    const prevPage = pageNums[i] ?? 1
+    const nextPage = pageNums[i + 1] ?? prevPage + 1
+    const labelEl = br.querySelector('.page-break-label, .section-break-label') as HTMLElement | null
+    if (labelEl) {
+      const isSection = br.dataset.sectionBreak === 'true'
+      labelEl.textContent = isSection
+        ? `Section break · end of page ${prevPage} → page ${nextPage}`
+        : `End of page ${prevPage} → page ${nextPage}`
+    }
+  })
 }
 
 // ── current paragraph attrs (margin/indent) for toolbar bindings ────────────
@@ -401,6 +470,12 @@ function onSetParagraphAttr(which: 'marginTop' | 'marginRight' | 'marginBottom' 
 
 const paperWrapperStyle = computed(() => ({
   width: `${props.pageLayout.page_width}px`,
+  // The page-break gap reaches the full width of the paper by using a
+  // negative horizontal margin equal to the body padding. We expose those
+  // paddings here so the gap can read them.
+  '--page-margin-left': `${props.pageLayout.margin_left}px`,
+  '--page-margin-right': `${props.pageLayout.margin_right}px`,
+  '--page-bg': '#f1f5f9', // matches outer container bg (slate-100)
 }))
 
 const mainStyle = computed(() => ({
@@ -415,19 +490,21 @@ const mainStyle = computed(() => ({
 const bandStyle = computed(() => ({
   paddingLeft: `${props.pageLayout.margin_left}px`,
   paddingRight: `${props.pageLayout.margin_right}px`,
-  paddingTop: `${Math.round(props.pageLayout.margin_top / 3)}px`,
-  paddingBottom: `${Math.round(props.pageLayout.margin_top / 3)}px`,
+  paddingTop: `${Math.max(8, Math.round(props.pageLayout.margin_top / 3))}px`,
+  paddingBottom: `${Math.max(8, Math.round(props.pageLayout.margin_top / 3))}px`,
 }))
 
-const headerVisible = computed(() =>
-  // Visible when the document has header content OR when the user explicitly
-  // toggled it on for editing.
-  headerActive.value || hasContent(props.headerContent),
+const sentinelStyle = computed(() => ({
+  height: `${Math.max(24, Math.round(props.pageLayout.margin_top / 3))}px`,
+}))
+
+const headerOpen = computed(() => headerExplicit.value ?? hasContent(props.headerContent))
+const footerOpen = computed(
+  () => footerExplicit.value ?? (hasContent(props.footerContent) || (props.showPageNumbers ?? false)),
 )
 
-const footerVisible = computed(() =>
-  footerActive.value || hasContent(props.footerContent) || (props.showPageNumbers ?? false),
-)
+const headerVisible = computed(() => headerOpen.value)
+const footerVisible = computed(() => footerOpen.value || (props.showPageNumbers ?? false))
 
 function hasContent(s: string | undefined): boolean {
   if (!s) return false
@@ -444,18 +521,55 @@ function hasContent(s: string | undefined): boolean {
 }
 
 function toggleHeader() {
-  headerActive.value = !headerActive.value
-  if (headerActive.value) {
-    nextTick(() => headerEditor.commands.focus())
-  }
+  const next = !headerOpen.value
+  headerExplicit.value = next
+  if (next) nextTick(() => headerEditor.commands.focus())
+}
+function toggleFooter() {
+  const next = !footerOpen.value
+  footerExplicit.value = next
+  if (next) nextTick(() => footerEditor.commands.focus())
 }
 
-function toggleFooter() {
-  footerActive.value = !footerActive.value
-  if (footerActive.value) {
-    nextTick(() => footerEditor.commands.focus())
-  }
+function activateHeader() {
+  headerExplicit.value = true
+  nextTick(() => headerEditor.commands.focus())
 }
+function activateFooter() {
+  footerExplicit.value = true
+  nextTick(() => footerEditor.commands.focus())
+}
+function closeHeader() {
+  headerExplicit.value = false
+  editor.value?.commands.focus()
+}
+function closeFooter() {
+  footerExplicit.value = false
+  editor.value?.commands.focus()
+}
+
+// Esc inside a mini editor returns focus to the body editor and collapses
+// the band (matching Word / Google Docs behaviour).
+function bindMiniEscape(ed: Editor, close: () => void) {
+  const handler = (e: KeyboardEvent) => {
+    if (e.key === 'Escape') {
+      e.preventDefault()
+      close()
+    }
+  }
+  const dom = ed.view.dom as HTMLElement
+  dom.addEventListener('keydown', handler)
+  return () => dom.removeEventListener('keydown', handler)
+}
+
+let unbindHeaderEsc: (() => void) | null = null
+let unbindFooterEsc: (() => void) | null = null
+
+onMounted(() => {
+  unbindHeaderEsc = bindMiniEscape(headerEditor, closeHeader)
+  unbindFooterEsc = bindMiniEscape(footerEditor, closeFooter)
+  if (editor.value) refreshPagination(editor.value)
+})
 
 // ── image upload ────────────────────────────────────────────────────────────
 
@@ -529,10 +643,14 @@ function jumpTo(from: number, to: number) {
 
 function applyRemoteHeader(content: unknown) {
   headerEditor.commands.setContent(normalizeContent(content) as string, false)
+  latestHeaderJson.value = parseBandContent(typeof content === 'string' ? content : JSON.stringify(content))
+  nextTick(updatePageNumberChipLabels)
 }
 
 function applyRemoteFooter(content: unknown) {
   footerEditor.commands.setContent(normalizeContent(content) as string, false)
+  latestFooterJson.value = parseBandContent(typeof content === 'string' ? content : JSON.stringify(content))
+  nextTick(updatePageNumberChipLabels)
 }
 
 // ── watchers ────────────────────────────────────────────────────────────────
@@ -559,9 +677,8 @@ watch(() => props.pageNumberStart, () => {
   if (editor.value) refreshPagination(editor.value)
 })
 
-// Update header/footer chip labels whenever pagination or content changes.
-watch(pageCount, () => updatePageNumberChipLabels())
-watch(firstPageNumber, () => updatePageNumberChipLabels())
+// Update labels whenever counts change.
+watch([pageCount, firstPageNumber, lastPageNumber], () => updatePageNumberChipLabels())
 
 defineExpose({
   applyRemote,
@@ -574,6 +691,8 @@ defineExpose({
 })
 
 onBeforeUnmount(() => {
+  unbindHeaderEsc?.()
+  unbindFooterEsc?.()
   editor.value?.destroy()
   headerEditor.destroy()
   footerEditor.destroy()
@@ -581,6 +700,166 @@ onBeforeUnmount(() => {
 </script>
 
 <style>
+/* Remove the default browser focus outline that ProseMirror adds when the
+   editor element receives focus. The transition was visible as a blue/black
+   border ring whenever the user clicked into a different document. */
+.tiptap-editor .ProseMirror,
+.tiptap-mini .ProseMirror {
+  outline: none !important;
+  box-shadow: none !important;
+  border: none !important;
+}
+.tiptap-editor .ProseMirror-focused,
+.tiptap-mini .ProseMirror-focused {
+  outline: none !important;
+  box-shadow: none !important;
+  border: none !important;
+}
+
+/* Default typography matches Word's default — Times New Roman, 12pt. This
+   applies wherever the user hasn't explicitly chosen a font/size. */
+.tiptap-editor,
+.tiptap-mini {
+  font-family: 'Times New Roman', Times, serif;
+  font-size: 12pt;
+}
+
+/* ── Paper container ───────────────────────────────────────────────────── */
+.paper-stack {
+  position: relative;
+}
+
+/* ── Editable header/footer bands ──────────────────────────────────────── */
+.paper-band {
+  position: relative;
+  background: #fff;
+  cursor: text;
+}
+.paper-band-top {
+  border-bottom: 1px dashed #cbd5e1;
+  border-top-left-radius: 0.375rem;
+  border-top-right-radius: 0.375rem;
+  box-shadow: 0 -1px 2px 0 rgba(0, 0, 0, 0.04);
+}
+.paper-band-bottom {
+  border-top: 1px dashed #cbd5e1;
+  border-bottom-left-radius: 0.375rem;
+  border-bottom-right-radius: 0.375rem;
+  box-shadow: 0 1px 2px 0 rgba(0, 0, 0, 0.04);
+}
+.paper-band-label {
+  font-size: 10px;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: #94a3b8;
+  padding: 2px 4px 0;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  user-select: none;
+}
+.paper-band-label-bottom {
+  padding: 4px 4px 2px;
+  justify-content: flex-end;
+  gap: 8px;
+}
+.paper-band-close {
+  background: transparent;
+  border: 0;
+  color: #94a3b8;
+  width: 16px;
+  height: 16px;
+  border-radius: 9999px;
+  font-size: 11px;
+  line-height: 1;
+  cursor: pointer;
+}
+.paper-band-close:hover {
+  background: #f1f5f9;
+  color: #334155;
+}
+
+/* Sentinel hover hint for "double-click to add a header/footer". */
+.paper-band-sentinel {
+  position: relative;
+  background: transparent;
+  cursor: pointer;
+  transition: background-color 0.12s ease;
+}
+.paper-band-sentinel:hover {
+  background: rgba(255, 255, 255, 0.6);
+  outline: 1px dashed rgba(148, 163, 184, 0.6);
+  outline-offset: -4px;
+}
+
+/* ── Page-break + section-break: the visual "between sheets" gap ───────── */
+.tiptap-editor .page-break,
+.tiptap-editor .section-break {
+  position: relative;
+  display: block;
+  /* Reach out to the very edge of the paper so the gap looks like the
+     boundary between two sheets. */
+  margin-left: calc(-1 * var(--page-margin-left, 96px));
+  margin-right: calc(-1 * var(--page-margin-right, 96px));
+  margin-top: 28px;
+  margin-bottom: 28px;
+  background: var(--page-bg, #f1f5f9);
+  user-select: none;
+}
+.tiptap-editor .page-break .page-break-paper-end,
+.tiptap-editor .section-break .page-break-paper-end {
+  /* Bottom-edge shadow of the previous sheet. */
+  height: 6px;
+  background: #fff;
+  box-shadow: 0 6px 8px -4px rgba(15, 23, 42, 0.18);
+  position: relative;
+  z-index: 1;
+}
+.tiptap-editor .page-break .page-break-paper-start,
+.tiptap-editor .section-break .page-break-paper-start {
+  /* Top-edge shadow of the next sheet. */
+  height: 6px;
+  background: #fff;
+  box-shadow: 0 -6px 8px -4px rgba(15, 23, 42, 0.18);
+  position: relative;
+  z-index: 1;
+}
+.tiptap-editor .page-break .page-break-gap,
+.tiptap-editor .section-break .page-break-gap {
+  height: 56px;
+  background: var(--page-bg, #f1f5f9);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  position: relative;
+}
+.tiptap-editor .section-break .section-break-gap {
+  height: 80px;
+}
+.tiptap-editor .page-break .page-break-label,
+.tiptap-editor .section-break .section-break-label {
+  background: #fff;
+  border: 1px solid #cbd5e1;
+  border-radius: 9999px;
+  padding: 2px 12px;
+  font-size: 11px;
+  color: #475569;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  z-index: 2;
+}
+.tiptap-editor .section-break .section-break-label {
+  border-color: #818cf8;
+  color: #3730a3;
+  background: #eef2ff;
+  font-weight: 600;
+}
+.tiptap-editor .page-break.ProseMirror-selectednode .page-break-label,
+.tiptap-editor .section-break.ProseMirror-selectednode .section-break-label {
+  border-color: #2563eb;
+  color: #1d4ed8;
+}
+
 /* Find & replace highlights */
 .find-match {
   background: rgba(250, 204, 21, 0.45);
@@ -589,32 +868,6 @@ onBeforeUnmount(() => {
 .find-match-active {
   background: rgba(249, 115, 22, 0.65);
   box-shadow: 0 0 0 2px rgba(249, 115, 22, 0.5);
-}
-
-/* Page break visual */
-.tiptap-editor .page-break {
-  position: relative;
-  display: block;
-  margin: 32px -16px;
-  border-top: 2px dashed #94a3b8;
-  user-select: none;
-}
-.tiptap-editor .page-break .page-break-label {
-  position: absolute;
-  top: -10px;
-  left: 50%;
-  transform: translateX(-50%);
-  background: #f1f5f9;
-  border: 1px solid #cbd5e1;
-  border-radius: 999px;
-  padding: 1px 10px;
-  font-size: 11px;
-  color: #475569;
-  letter-spacing: 0.04em;
-  text-transform: uppercase;
-}
-.tiptap-editor .page-break.ProseMirror-selectednode {
-  border-top-color: #2563eb;
 }
 
 /* Page number chip */

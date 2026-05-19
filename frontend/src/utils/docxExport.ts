@@ -78,10 +78,20 @@ function pxToTwips(px: number | string | undefined): number | undefined {
   return Math.round((n / PX_PER_INCH) * TWIPS_PER_INCH)
 }
 
-function pxToHalfPts(px: string): number | undefined {
-  const n = parseFloat(px)
+/**
+ * Convert a CSS font-size string (``"12pt"`` or legacy ``"12px"``) into the
+ * half-points Word uses for ``<w:sz w:val="…"/>``. Both units are treated
+ * as point sizes so that the number the user picks from the toolbar
+ * dropdown exactly matches the size that appears in the exported DOCX.
+ * Without this, a "12" in the dropdown was being interpreted as 12 px
+ * and exported as 9 pt.
+ */
+function pxToHalfPts(size: string): number | undefined {
+  const m = size.match(/^([\d.]+)/)
+  if (!m) return undefined
+  const n = parseFloat(m[1])
   if (isNaN(n)) return undefined
-  return Math.round(n * 0.75 * 2)
+  return Math.round(n * 2)
 }
 
 function colorToDocxHex(color: string | undefined | null): string | undefined {
@@ -463,7 +473,16 @@ function convertNode(node: TiptapNode, listDepth = 0): Block[] {
       return [new Paragraph({ children: [new TextRun({ text: '', break: 1 })] })]
 
     case 'pageBreak':
+      // A page break that doesn't restart numbering is just an inline
+      // ``<w:br w:type="page"/>``. Breaks that DO restart numbering are
+      // promoted to Word section breaks by ``splitIntoSections`` upstream
+      // — they never reach this switch.
       return [new Paragraph({ children: [new PageBreak()] })]
+
+    case 'sectionBreak':
+      // Section breaks are handled at the document level (one Word section
+      // per group). They produce no inline output here.
+      return []
 
     default:
       return []
@@ -505,6 +524,54 @@ function buildBandChildren(json: unknown): Paragraph[] {
     : [new Paragraph({ children: [] })]
 }
 
+// ─── section grouping ────────────────────────────────────────────────────────
+
+interface SectionGroup {
+  children: TiptapNode[]
+  /** What page number this section's first page should display. */
+  pageNumberStart: number
+  /** When true, this section continues the previous section's numbering. */
+  continueNumbering: boolean
+}
+
+/**
+ * Splits the body's top-level children into Word sections. Each ``sectionBreak``
+ * node (and every ``pageBreak`` flagged ``restartNumbering``) starts a new
+ * section. The break node itself is consumed — its semantics live on the
+ * resulting section's properties.
+ */
+function splitIntoSections(root: TiptapNode, initialStart: number): SectionGroup[] {
+  const sections: SectionGroup[] = []
+  let current: TiptapNode[] = []
+  let currentStart = Math.max(1, initialStart | 0)
+  let currentContinue = false
+
+  for (const node of root.content ?? []) {
+    if (node.type === 'sectionBreak') {
+      sections.push({ children: current, pageNumberStart: currentStart, continueNumbering: currentContinue })
+      current = []
+      const reset = node.attrs?.restartNumbering !== false
+      if (reset) {
+        currentStart = ((node.attrs?.numberStart as number) ?? 1) | 0
+        currentContinue = false
+      } else {
+        currentContinue = true
+      }
+    } else if (node.type === 'pageBreak' && node.attrs?.restartNumbering) {
+      // A page break that restarts numbering becomes a section break in Word.
+      sections.push({ children: current, pageNumberStart: currentStart, continueNumbering: currentContinue })
+      current = []
+      currentStart = ((node.attrs?.numberStart as number) ?? 1) | 0
+      currentContinue = false
+    } else {
+      current.push(node)
+    }
+  }
+
+  sections.push({ children: current, pageNumberStart: currentStart, continueNumbering: currentContinue })
+  return sections
+}
+
 // ─── public API ──────────────────────────────────────────────────────────────
 
 export async function exportToDocx(
@@ -521,41 +588,41 @@ export async function exportToDocx(
     preloadImages(options.footerJson as TiptapNode | undefined as TiptapNode | null),
   ])
 
-  const children = convertNode(root)
-
   // Compose a Header / Footer if the user defined one OR if page numbers
-  // are enabled (numbering needs SOME footer to live in).
+  // are enabled (numbering needs SOME footer to live in). Each Word section
+  // gets a fresh Header/Footer instance (the docx library does not let you
+  // reuse the same one across sections).
   const headerHasContent = bandHasContent(options.headerJson)
   const footerHasContent = bandHasContent(options.footerJson)
   const wantsPageNumbers = !!options.showPageNumbers
 
-  const headers = headerHasContent
-    ? {
-        default: new Header({ children: buildBandChildren(options.headerJson) }),
-      }
-    : undefined
-
-  let footerChildren: Paragraph[] = []
-  if (footerHasContent) {
-    footerChildren = buildBandChildren(options.footerJson)
-  } else if (wantsPageNumbers) {
-    footerChildren = [
-      new Paragraph({
-        alignment: AlignmentType.CENTER,
-        children: [new TextRun({ children: [DocxPageNumber.CURRENT] })],
-      }),
-    ]
+  function makeHeader() {
+    return headerHasContent
+      ? { default: new Header({ children: buildBandChildren(options.headerJson) }) }
+      : undefined
   }
 
-  const footers =
-    footerChildren.length > 0
+  function makeFooter() {
+    let footerChildren: Paragraph[] = []
+    if (footerHasContent) {
+      footerChildren = buildBandChildren(options.footerJson)
+    } else if (wantsPageNumbers) {
+      footerChildren = [
+        new Paragraph({
+          alignment: AlignmentType.CENTER,
+          children: [new TextRun({ children: [DocxPageNumber.CURRENT] })],
+        }),
+      ]
+    }
+    return footerChildren.length > 0
       ? { default: new Footer({ children: footerChildren }) }
       : undefined
+  }
 
   const layout = options.pageLayout
-  const sectionProperties: any = {}
-  if (layout) {
-    sectionProperties.page = {
+  function basePageProps() {
+    if (!layout) return undefined
+    return {
       size: {
         width: pxToTwips(layout.page_width),
         height: pxToTwips(layout.page_height),
@@ -569,22 +636,37 @@ export async function exportToDocx(
         bottom: pxToTwips(layout.margin_bottom),
         left: pxToTwips(layout.margin_left),
       },
-      pageNumbers: {
-        start: options.pageNumberStart ?? 1,
-        formatType: NumberFormat.DECIMAL,
-      },
     }
   }
+
+  const groups = splitIntoSections(root, options.pageNumberStart ?? 1)
+
+  const sections = groups.map((group) => {
+    const groupRoot: TiptapNode = { type: 'doc', content: group.children }
+    const groupChildren = convertNode(groupRoot)
+    // Word requires every section to contain at least one paragraph.
+    if (groupChildren.length === 0) {
+      groupChildren.push(new Paragraph({ children: [] }))
+    }
+    const page: any = basePageProps() ?? {}
+    if (!group.continueNumbering) {
+      page.pageNumbers = {
+        start: group.pageNumberStart,
+        formatType: NumberFormat.DECIMAL,
+      }
+    }
+    return {
+      properties: { page },
+      headers: makeHeader(),
+      footers: makeFooter(),
+      children: groupChildren as any,
+    }
+  })
 
   const doc = new Document({
     creator: 'KubSTU Docs',
     title,
-    sections: [{
-      properties: sectionProperties,
-      headers,
-      footers,
-      children: children as any,
-    }],
+    sections,
   })
 
   const blob = await Packer.toBlob(doc)

@@ -2,8 +2,8 @@
   <div class="min-h-screen flex items-center justify-center bg-gradient-to-br from-primary-950 via-primary-900 to-primary-800 px-4">
     <div class="w-full max-w-sm">
       <div class="text-center mb-8">
-        <h1 class="text-2xl font-bold text-white">Forgot password?</h1>
-        <p class="text-primary-300 text-sm mt-1">We'll send you a reset link</p>
+        <h1 class="text-2xl font-bold text-white">Забыли пароль?</h1>
+        <p class="text-primary-300 text-sm mt-1">Мы отправим ссылку для сброса</p>
       </div>
 
       <div class="card p-6 shadow-2xl">
@@ -14,14 +14,14 @@
               <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 8l7.89 5.26a2 2 0 002.22 0L21 8M5 19h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z" />
             </svg>
           </div>
-          <h2 class="font-semibold text-slate-800 mb-2">Check your email</h2>
-          <p class="text-slate-500 text-sm">If that email exists, we sent a reset link. It expires in 30 minutes.</p>
+          <h2 class="font-semibold text-slate-800 mb-2">Проверьте почту</h2>
+          <p class="text-slate-500 text-sm">Если такой email существует, мы отправили ссылку для сброса. Срок действия — 30 минут.</p>
         </div>
 
         <!-- Form -->
         <form v-else @submit.prevent="handleSubmit" class="flex flex-col gap-4">
           <div class="form-group">
-            <label class="label" for="email">Email address</label>
+            <label class="label" for="email">Адрес электронной почты</label>
             <input
               id="email"
               v-model="email"
@@ -40,13 +40,13 @@
               <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"/>
               <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8H4z"/>
             </svg>
-            {{ isLoading ? 'Sending…' : 'Send reset link' }}
+            {{ isLoading ? 'Отправка…' : 'Отправить ссылку для сброса' }}
           </button>
         </form>
       </div>
 
       <p class="text-center text-primary-300 text-sm mt-6">
-        <RouterLink to="/login" class="text-white font-medium hover:underline">← Back to sign in</RouterLink>
+        <RouterLink to="/login" class="text-white font-medium hover:underline">← Назад ко входу</RouterLink>
       </p>
     </div>
   </div>
@@ -69,7 +69,7 @@ async function handleSubmit() {
     success.value = true
   } catch (e: unknown) {
     const err = e as { response?: { status?: number } }
-    if (err.response?.status === 429) error.value = 'Too many attempts. Try again later.'
+    if (err.response?.status === 429) error.value = 'Слишком много попыток. Попробуйте позже.'
     else success.value = true // don't reveal if email exists
   } finally {
     isLoading.value = false

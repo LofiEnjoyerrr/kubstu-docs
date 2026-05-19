@@ -29,16 +29,16 @@
             </div>
           </div>
 
-          <h2 class="text-2xl font-bold text-slate-800 mb-2">Password updated!</h2>
-          <p class="text-slate-500 text-sm mb-8">You can now sign in with your new password.</p>
+          <h2 class="text-2xl font-bold text-slate-800 mb-2">Пароль обновлён!</h2>
+          <p class="text-slate-500 text-sm mb-8">Теперь вы можете войти с новым паролем.</p>
 
           <div class="flex flex-col items-center gap-4">
             <p class="text-sm text-slate-500">
-              Redirecting to sign-in in
-              <span class="font-semibold text-primary-600 tabular-nums">{{ countdown }}s</span>…
+              Перенаправление на страницу входа через
+              <span class="font-semibold text-primary-600 tabular-nums">{{ countdown }} с</span>…
             </p>
             <RouterLink to="/login" class="btn-primary btn-lg w-full">
-              Go to sign in now
+              Перейти ко входу
               <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 7l5 5m0 0l-5 5m5-5H6"/>
               </svg>
@@ -54,13 +54,13 @@
                 <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z"/>
               </svg>
             </div>
-            <h1 class="text-2xl font-bold text-slate-800">Set new password</h1>
-            <p class="text-slate-500 text-sm mt-1">Choose a strong password for your account.</p>
+            <h1 class="text-2xl font-bold text-slate-800">Новый пароль</h1>
+            <p class="text-slate-500 text-sm mt-1">Выберите надёжный пароль для вашего аккаунта.</p>
           </div>
 
           <form @submit.prevent="handleSubmit" class="flex flex-col gap-4">
             <div class="form-group">
-              <label class="label" for="password">New password</label>
+              <label class="label" for="password">Новый пароль</label>
               <div class="relative">
                 <input
                   id="password"
@@ -68,7 +68,7 @@
                   class="input pr-10"
                   :type="showPassword ? 'text' : 'password'"
                   autocomplete="new-password"
-                  placeholder="at least 8 characters"
+                  placeholder="минимум 8 символов"
                   required
                   minlength="8"
                 />
@@ -91,7 +91,7 @@
                 <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"/>
                 <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8H4z"/>
               </svg>
-              {{ isLoading ? 'Updating…' : 'Update password' }}
+              {{ isLoading ? 'Обновление…' : 'Обновить пароль' }}
             </button>
           </form>
         </div>
@@ -147,9 +147,9 @@ async function handleSubmit() {
     const err = e as { response?: { data?: Record<string, string[]>; status?: number } }
     const data = err.response?.data
     if (data?.password) error.value = data.password[0]
-    else if (data?.token) error.value = 'This reset link is invalid or has expired.'
-    else if (err.response?.status === 404) error.value = 'This reset link is invalid or has expired.'
-    else error.value = 'Something went wrong. Please try again.'
+    else if (data?.token) error.value = 'Эта ссылка для сброса недействительна или истекла.'
+    else if (err.response?.status === 404) error.value = 'Эта ссылка для сброса недействительна или истекла.'
+    else error.value = 'Что-то пошло не так. Попробуйте ещё раз.'
   } finally {
     isLoading.value = false
   }

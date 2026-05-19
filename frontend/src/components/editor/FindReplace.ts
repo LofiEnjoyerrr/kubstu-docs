@@ -1,5 +1,5 @@
 import { Extension } from '@tiptap/core'
-import { Plugin, PluginKey } from '@tiptap/pm/state'
+import { Plugin, PluginKey, TextSelection } from '@tiptap/pm/state'
 import { Decoration, DecorationSet } from '@tiptap/pm/view'
 import type { EditorState, Transaction } from '@tiptap/pm/state'
 
@@ -143,9 +143,9 @@ export const FindReplace = Extension.create({
           if (!s || s.results.length === 0) return false
           const next = (s.active + 1) % s.results.length
           if (dispatch) {
-            tr.setMeta(findReplaceKey, { active: next })
             const r = s.results[next]
-            tr.setSelection((state.selection.constructor as any).create(state.doc, r.from, r.to))
+            tr.setMeta(findReplaceKey, { active: next })
+            tr.setSelection(TextSelection.create(tr.doc, r.from, r.to))
             tr.scrollIntoView()
             dispatch(tr)
           }
@@ -159,9 +159,9 @@ export const FindReplace = Extension.create({
           if (!s || s.results.length === 0) return false
           const next = (s.active - 1 + s.results.length) % s.results.length
           if (dispatch) {
-            tr.setMeta(findReplaceKey, { active: next })
             const r = s.results[next]
-            tr.setSelection((state.selection.constructor as any).create(state.doc, r.from, r.to))
+            tr.setMeta(findReplaceKey, { active: next })
+            tr.setSelection(TextSelection.create(tr.doc, r.from, r.to))
             tr.scrollIntoView()
             dispatch(tr)
           }
