@@ -547,9 +547,11 @@ class DocxConverter:
                     list_buffer.append((kind, p_node, level))
                     continue
                 flush_list()
-                node = self._build_paragraph(child)
-                if node:
-                    out.append(node)
+                # _build_paragraph_blocks may emit multiple block nodes
+                # when the paragraph contains inline images / page breaks
+                # (block-level in our schema).
+                for block in self._build_paragraph_blocks(child):
+                    out.append(block)
                 # An intermediate <w:sectPr> nested in a paragraph's pPr marks
                 # the END of a section. Convert it to a sectionBreak node.
                 ppr = child.find(qn('pPr'))
@@ -614,7 +616,16 @@ class DocxConverter:
 
     # -------------------------------------------------------------- paragraph
 
-    def _build_paragraph(self, p: ET.Element, *, in_list: bool = False) -> dict:
+    # Nodes that are inline-encoded inside a Word paragraph but are
+    # actually block-level in our Tiptap schema. When we find any of these
+    # inside a ``<w:p>`` we have to split the paragraph at that point and
+    # emit them as block-level siblings — otherwise ProseMirror's schema
+    # silently filters them out on load (which is what caused imported
+    # DOCX page breaks and images to disappear).
+    _BLOCK_INLINE_TYPES: 'set[str]' = {'image', 'pageBreak'}
+
+    def _build_paragraph_attrs(self, p: ET.Element, *, in_list: bool = False) -> 'tuple[str, dict[str, Any]]':
+        """Extract ``(node_type, attrs)`` for the paragraph or heading."""
         ppr = p.find(qn('pPr'))
         attrs: dict[str, Any] = {}
 
@@ -688,12 +699,72 @@ class DocxConverter:
         if line_height:
             attrs['lineHeight'] = line_height
 
-        # Build inline content
-        inline_content = self._build_inline(p)
-
         node_type = 'heading' if heading_level else 'paragraph'
         if heading_level:
             attrs['level'] = heading_level
+
+        return node_type, attrs
+
+    def _build_paragraph_blocks(self, p: ET.Element, *, in_list: bool = False) -> 'list[dict]':
+        """
+        Build the block-level nodes for a single Word paragraph.
+
+        A ``<w:p>`` in Word may contain block-level content (images, page
+        breaks) inlined among its runs. The Tiptap schema treats those as
+        block nodes, so when ProseMirror parses a paragraph that lists
+        them as ``content`` it silently drops them. To keep that data we
+        split the paragraph at each block-level inline and emit the
+        blocks as siblings — exactly the result one would expect in
+        Tiptap / Google Docs.
+        """
+        node_type, attrs = self._build_paragraph_attrs(p, in_list=in_list)
+        inline_items = self._build_inline(p)
+
+        blocks: list[dict] = []
+        current_inline: list[dict] = []
+
+        def emit_paragraph() -> None:
+            nonlocal current_inline
+            node: dict[str, Any] = {'type': node_type}
+            if attrs:
+                node['attrs'] = dict(attrs)
+            if current_inline:
+                node['content'] = current_inline
+            blocks.append(node)
+            current_inline = []
+
+        for item in inline_items:
+            if item.get('type') in self._BLOCK_INLINE_TYPES:
+                if current_inline:
+                    emit_paragraph()
+                # Marks attached during hyperlink traversal are not valid
+                # on block-level nodes — strip them on the way out.
+                item.pop('marks', None)
+                blocks.append(item)
+            else:
+                current_inline.append(item)
+
+        if current_inline:
+            emit_paragraph()
+        elif not blocks:
+            # Word kept an empty paragraph here — preserve it.
+            emit_paragraph()
+
+        return blocks
+
+    def _build_paragraph(self, p: ET.Element, *, in_list: bool = False) -> dict:
+        """
+        Returns a single paragraph node. Used by the list builder, where
+        each list item expects exactly one paragraph. Block-level inline
+        items inside a list paragraph are simply dropped — Word lists
+        with embedded images or page breaks are rare and we keep the
+        text content intact.
+        """
+        node_type, attrs = self._build_paragraph_attrs(p, in_list=in_list)
+        inline_content = [
+            n for n in self._build_inline(p)
+            if n.get('type') not in self._BLOCK_INLINE_TYPES
+        ]
 
         node: dict[str, Any] = {'type': node_type}
         if attrs:
@@ -915,7 +986,9 @@ class DocxConverter:
                 for child in tc:
                     tag = child.tag
                     if tag == qn('p'):
-                        cell_content.append(self._build_paragraph(child))
+                        # Same block-extraction as the body so embedded
+                        # images survive inside table cells.
+                        cell_content.extend(self._build_paragraph_blocks(child))
                     elif tag == qn('tbl'):
                         cell_content.append(self._build_table(child))
                 if not cell_content:

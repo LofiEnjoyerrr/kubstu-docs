@@ -91,7 +91,7 @@
           v-else
           class="paper-band-sentinel paper-band-sentinel-bottom"
           :style="sentinelStyle"
-          title="Double-click to add a footer"
+          title="Двойной клик — добавить нижний колонтитул"
           @dblclick="activateFooter"
         />
       </div>
@@ -106,7 +106,7 @@ import { Extension, Editor as CoreEditor } from '@tiptap/core'
 import StarterKit from '@tiptap/starter-kit'
 import Underline from '@tiptap/extension-underline'
 import TextAlign from '@tiptap/extension-text-align'
-import Image from '@tiptap/extension-image'
+import { ResolvedImage } from './ResolvedImage'
 import Link from '@tiptap/extension-link'
 import Placeholder from '@tiptap/extension-placeholder'
 import TextStyle from '@tiptap/extension-text-style'
@@ -177,9 +177,9 @@ function baseExtensions(opts: { placeholder?: string } = {}) {
     StarterKit,
     Underline,
     TextAlign.configure({ types: ['heading', 'paragraph'] }),
-    Image.configure({ inline: false, allowBase64: true }),
+    ResolvedImage.configure({ inline: false, allowBase64: true }),
     Link.configure({ openOnClick: false, autolink: true, linkOnPaste: true }),
-    Placeholder.configure({ placeholder: opts.placeholder ?? 'Start writing your document…' }),
+    Placeholder.configure({ placeholder: opts.placeholder ?? 'Начните вводить текст документа…' }),
     TextStyle,
     Color,
     Highlight.configure({ multicolor: true }),
@@ -333,7 +333,12 @@ const footerExplicit = ref<boolean | null>(null)
 const latestHeaderJson = ref<unknown>(parseBandContent(props.headerContent))
 const latestFooterJson = ref<unknown>(parseBandContent(props.footerContent))
 
-function makeBandEditor(initial: unknown, placeholder: string, onUpdate: (json: unknown) => void): Editor {
+function makeBandEditor(
+  initial: unknown,
+  placeholder: string,
+  kind: 'header' | 'footer',
+  onUpdate: (json: unknown) => void,
+): Editor {
   return new Editor({
     editable: props.editable ?? true,
     extensions: baseExtensions({ placeholder }),
@@ -341,7 +346,7 @@ function makeBandEditor(initial: unknown, placeholder: string, onUpdate: (json: 
     onUpdate: ({ editor }) => {
       const json = editor.getJSON()
       onUpdate(json)
-      if (placeholder.toLowerCase().includes('header')) latestHeaderJson.value = json
+      if (kind === 'header') latestHeaderJson.value = json
       else latestFooterJson.value = json
     },
   })
@@ -349,13 +354,15 @@ function makeBandEditor(initial: unknown, placeholder: string, onUpdate: (json: 
 
 const headerEditor = makeBandEditor(
   parseBandContent(props.headerContent),
-  'Header (page number, title, …)',
+  'Верхний колонтитул (номер страницы, заголовок, …)',
+  'header',
   json => emit('updateHeaderContent', json),
 )
 
 const footerEditor = makeBandEditor(
   parseBandContent(props.footerContent),
-  'Footer (page number, date, …)',
+  'Нижний колонтитул (номер страницы, дата, …)',
+  'footer',
   json => emit('updateFooterContent', json),
 )
 
@@ -421,8 +428,8 @@ function updatePageBreakChrome(ed: CoreEditor | Editor) {
     if (labelEl) {
       const isSection = br.dataset.sectionBreak === 'true'
       labelEl.textContent = isSection
-        ? `Section break · end of page ${prevPage} → page ${nextPage}`
-        : `End of page ${prevPage} → page ${nextPage}`
+        ? `Разрыв раздела · конец стр. ${prevPage} → стр. ${nextPage}`
+        : `Конец стр. ${prevPage} → стр. ${nextPage}`
     }
   })
 }

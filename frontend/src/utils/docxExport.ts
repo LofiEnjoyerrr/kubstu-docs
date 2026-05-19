@@ -24,6 +24,7 @@ import {
   type ParagraphChild,
 } from 'docx'
 import { saveAs } from 'file-saver'
+import { resolveMediaUrl } from './media'
 import type { PageLayout } from '../types'
 
 // ─── types ────────────────────────────────────────────────────────────────────
@@ -176,7 +177,12 @@ async function loadImage(src: string): Promise<ImageBlob | null> {
       for (let i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i)
       arrayBuffer = bytes.buffer
     } else {
-      const resp = await fetch(src, { credentials: 'include' })
+      // DOCX-imported images are stored as ``/media/...`` relative paths.
+      // In dev that resolves to ``http://localhost:5173`` (Vite) which has
+      // nothing to serve. ``resolveMediaUrl`` prepends the API base so the
+      // fetch hits Django regardless of which dev port the page is on.
+      const fetchUrl = resolveMediaUrl(src) ?? src
+      const resp = await fetch(fetchUrl, { credentials: 'include' })
       if (!resp.ok) {
         imageCache.set(src, null)
         return null
