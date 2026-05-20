@@ -10,6 +10,9 @@ export const getAvailableDocuments = () =>
 export const getDocument = (id: number) =>
   apiClient.get<Document>(`/api/docs/${id}/`)
 
+export const deleteDocument = (id: number) =>
+  apiClient.delete(`/api/docs/${id}/`)
+
 export const updateDocument = (
   id: number,
   data: {

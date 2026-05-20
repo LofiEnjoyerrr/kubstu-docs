@@ -666,7 +666,10 @@ async function onDocxImport(e: Event) {
 async function onDocxExport() {
   isExporting.value = true
   try {
-    const { exportToDocx } = await import('../../utils/docxExport')
+    const [{ exportToDocx }, { getAutoBreakPositions }] = await Promise.all([
+      import('../../utils/docxExport'),
+      import('./AutoPagination'),
+    ])
     await exportToDocx(
       props.editor.getJSON(),
       props.docTitle ?? 'document',
@@ -676,6 +679,9 @@ async function onDocxExport() {
         footerJson: props.footerJson ?? null,
         showPageNumbers: !!props.showPageNumbers,
         pageNumberStart: props.pageNumberStart ?? 1,
+        // Carry the editor's visual pagination over to the DOCX so what
+        // the user sees on screen matches what they get in Word.
+        autoBreakPositions: getAutoBreakPositions(props.editor.state),
       },
     )
   } catch (err) {

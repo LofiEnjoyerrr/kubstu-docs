@@ -27,6 +27,13 @@ export const useDocumentsStore = defineStore('documents', () => {
     return res.data
   }
 
+  async function deleteDocument(id: number) {
+    await docsApi.deleteDocument(id)
+    ownerDocuments.value = ownerDocuments.value.filter((d) => d.id !== id)
+    openedDocuments.value = openedDocuments.value.filter((d) => d.id !== id)
+    if (currentDocument.value?.id === id) currentDocument.value = null
+  }
+
   async function updateDocument(
     id: number,
     data: {
@@ -77,6 +84,7 @@ export const useDocumentsStore = defineStore('documents', () => {
     fetchAvailable,
     fetchDocument,
     createDocument,
+    deleteDocument,
     updateDocument,
     fetchAccesses,
     addAccess,

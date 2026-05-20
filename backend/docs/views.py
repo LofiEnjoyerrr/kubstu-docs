@@ -184,6 +184,12 @@ class DocumentsRetrieveUpdateAPIView(APIView):
 
         return Response(data)
 
+    def delete(self, request, pk):
+        document = _get_document_or_404(pk)
+        _require_owner(document, request.user)
+        document.delete()
+        return Response(status=status.HTTP_204_NO_CONTENT)
+
 
 class DocumentAccessListCreateAPIView(APIView):
     permission_classes = [IsAuthenticated]

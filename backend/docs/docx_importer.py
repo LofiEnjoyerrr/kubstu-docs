@@ -831,6 +831,12 @@ class DocxConverter:
                     out.append({'type': 'pageBreak'})
                 else:
                     out.append({'type': 'hardBreak'})
+            elif tag == qn('lastRenderedPageBreak'):
+                # Word writes this element wherever it broke a page during
+                # its last layout pass. Treating it as a real page break
+                # preserves the pagination the user saw in Word — that's
+                # what they expect to see when they import.
+                out.append({'type': 'pageBreak'})
             elif tag == qn('tab'):
                 # Tiptap doesn't have a tab node; render as 4 spaces.
                 out.append({'type': 'text', 'text': ' '})

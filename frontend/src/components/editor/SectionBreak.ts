@@ -62,7 +62,7 @@ export const SectionBreak = Node.create({
         contenteditable: 'false',
       }),
       ['div', { class: 'page-break-paper-end' }],
-      ['div', { class: 'page-break-gap section-break-gap' }, ['span', { class: 'section-break-label' }, 'Разрыв раздела']],
+      ['div', { class: 'page-break-gap section-break-gap' }],
       ['div', { class: 'page-break-paper-start' }],
     ]
   },

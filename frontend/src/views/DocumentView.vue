@@ -118,6 +118,18 @@
           </svg>
           Поделиться
         </button>
+
+        <!-- Delete -->
+        <button
+          v-if="myRole === 'owner'"
+          class="btn-sm p-1.5 rounded-lg border border-red-200 text-red-600 hover:bg-red-50"
+          title="Удалить документ"
+          @click="askDelete"
+        >
+          <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+          </svg>
+        </button>
       </div>
     </header>
 
@@ -221,7 +233,7 @@
 
 <script setup lang="ts">
 import { ref, computed, onMounted, watch, nextTick } from 'vue'
-import { useRoute } from 'vue-router'
+import { useRoute, useRouter } from 'vue-router'
 import { useAuthStore } from '../stores/auth'
 import { useDocumentsStore } from '../stores/documents'
 import { useDocumentSocket } from '../composables/useDocumentSocket'
@@ -233,6 +245,7 @@ import { resolveMediaUrl } from '../utils/media'
 import type { Document, Comment, PageLayout } from '../types'
 
 const route = useRoute()
+const router = useRouter()
 const auth = useAuthStore()
 const docsStore = useDocumentsStore()
 
@@ -686,6 +699,21 @@ async function togglePublic() {
   if (!doc.value) return
   await docsStore.updateDocument(docId.value, { is_public: !doc.value.is_public })
   doc.value = docsStore.currentDocument
+}
+
+async function askDelete() {
+  if (!doc.value) return
+  const ok = window.confirm(
+    `Удалить документ «${doc.value.title || 'Без названия'}»? Это действие нельзя отменить.`,
+  )
+  if (!ok) return
+  try {
+    await docsStore.deleteDocument(doc.value.id)
+    // Drop back to the dashboard once the doc no longer exists.
+    router.push('/dashboard')
+  } catch {
+    window.alert('Не удалось удалить документ.')
+  }
 }
 
 watch(

@@ -133,6 +133,7 @@ import { ParagraphSpacing } from './ParagraphSpacing'
 import { PageBreak } from './PageBreak'
 import { SectionBreak } from './SectionBreak'
 import { PageNumber } from './PageNumber'
+import { AutoPagination, autoPaginationKey, getAutoBreakPositions } from './AutoPagination'
 import { paginate } from './paginate'
 import apiClient from '../../api/client'
 import { resolveMediaUrl } from '../../utils/media'
@@ -169,6 +170,15 @@ let isRemoteUpdate = false
 let storedCommentMarks: CommentMark[] = []
 let lastEmittedJson = ''
 let lastReportedMarksJson = ''
+
+/**
+ * Available content height per page in CSS pixels — i.e. the paper height
+ * minus the top and bottom margins. The auto-pagination plugin uses this
+ * to decide when to flow content onto a new page.
+ */
+function computePageContentHeight(pl: PageLayout): number {
+  return Math.max(100, pl.page_height - pl.margin_top - pl.margin_bottom)
+}
 
 // ── shared extensions builder ───────────────────────────────────────────────
 
@@ -234,6 +244,9 @@ const editor = useEditor({
     TaskItem.configure({ nested: true }),
     PageBreak,
     SectionBreak,
+    AutoPagination.configure({
+      pageHeight: computePageContentHeight(props.pageLayout),
+    }),
     FindReplace,
     RemoteCursors,
     CommentHighlights,
@@ -278,10 +291,17 @@ const editor = useEditor({
   },
   onTransaction: ({ editor, transaction }) => {
     if (isRemoteUpdate) return
-    if (!transaction.docChanged) return
+
+    // The AutoPagination plugin dispatches meta-only transactions when
+    // the computed break positions change — those don't bump ``docChanged``
+    // but they DO change the page count, so we still need to refresh.
+    const autoBreakChanged = transaction.getMeta(autoPaginationKey) !== undefined
+    if (!transaction.docChanged && !autoBreakChanged) return
 
     refreshParagraphAttrs(editor)
     refreshPagination(editor)
+
+    if (!transaction.docChanged) return
 
     const currentMarks = getCommentMarks(editor)
     const currentJson = JSON.stringify(currentMarks)
@@ -379,7 +399,11 @@ const lastPageNumber = ref(1)
 const pageNumbersByIdx = ref<number[]>([1])
 
 function refreshPagination(ed: CoreEditor | Editor) {
-  const info = paginate(ed.getJSON() as any, props.pageNumberStart ?? 1)
+  const info = paginate(
+    ed.state,
+    props.pageNumberStart ?? 1,
+    getAutoBreakPositions(ed.state),
+  )
   pageCount.value = info.pageCount
   firstPageNumber.value = info.pageNumbers[0] ?? 1
   lastPageNumber.value = info.pageNumbers[info.pageNumbers.length - 1] ?? 1
@@ -414,24 +438,9 @@ function updatePageNumberChipLabels() {
  * with a label that names the page numbers on either side. This is read-only
  * eye candy so the document looks like a real stack of paper.
  */
-function updatePageBreakChrome(ed: CoreEditor | Editor) {
-  const root = ed.view?.dom as HTMLElement | undefined
-  if (!root) return
-  const breaks = Array.from(
-    root.querySelectorAll<HTMLElement>('[data-page-break], [data-section-break]'),
-  )
-  const pageNums = pageNumbersByIdx.value
-  breaks.forEach((br, i) => {
-    const prevPage = pageNums[i] ?? 1
-    const nextPage = pageNums[i + 1] ?? prevPage + 1
-    const labelEl = br.querySelector('.page-break-label, .section-break-label') as HTMLElement | null
-    if (labelEl) {
-      const isSection = br.dataset.sectionBreak === 'true'
-      labelEl.textContent = isSection
-        ? `Разрыв раздела · конец стр. ${prevPage} → стр. ${nextPage}`
-        : `Конец стр. ${prevPage} → стр. ${nextPage}`
-    }
-  })
+function updatePageBreakChrome(_ed: CoreEditor | Editor) {
+  // Page-break visuals are now label-free — just an empty gap with the
+  // paper-edge shadows. Nothing to update here.
 }
 
 // ── current paragraph attrs (margin/indent) for toolbar bindings ────────────
@@ -684,6 +693,25 @@ watch(() => props.pageNumberStart, () => {
   if (editor.value) refreshPagination(editor.value)
 })
 
+// When the user resizes the paper or shifts a margin we need to tell the
+// auto-pagination plugin about the new available height AND let it
+// re-measure block heights against the new width. Pushing a meta update
+// triggers a fresh ``view.update``, which schedules a recompute.
+watch(
+  () => [
+    props.pageLayout.page_height,
+    props.pageLayout.margin_top,
+    props.pageLayout.margin_bottom,
+    props.pageLayout.page_width,
+    props.pageLayout.margin_left,
+    props.pageLayout.margin_right,
+  ],
+  () => {
+    if (!editor.value) return
+    editor.value.commands.setAutoPageHeight(computePageContentHeight(props.pageLayout))
+  },
+)
+
 // Update labels whenever counts change.
 watch([pageCount, firstPageNumber, lastPageNumber], () => updatePageNumberChipLabels())
 
@@ -843,28 +871,20 @@ onBeforeUnmount(() => {
 .tiptap-editor .section-break .section-break-gap {
   height: 80px;
 }
-.tiptap-editor .page-break .page-break-label,
-.tiptap-editor .section-break .section-break-label {
-  background: #fff;
-  border: 1px solid #cbd5e1;
-  border-radius: 9999px;
-  padding: 2px 12px;
-  font-size: 11px;
-  color: #475569;
-  letter-spacing: 0.04em;
-  text-transform: uppercase;
-  z-index: 2;
+/* Selected manual page break gets a soft blue tint so users know
+   they've clicked it. */
+.tiptap-editor .page-break.ProseMirror-selectednode .page-break-paper-end,
+.tiptap-editor .page-break.ProseMirror-selectednode .page-break-paper-start,
+.tiptap-editor .section-break.ProseMirror-selectednode .page-break-paper-end,
+.tiptap-editor .section-break.ProseMirror-selectednode .page-break-paper-start {
+  box-shadow: 0 0 0 2px rgba(37, 99, 235, 0.4);
 }
-.tiptap-editor .section-break .section-break-label {
-  border-color: #818cf8;
-  color: #3730a3;
-  background: #eef2ff;
-  font-weight: 600;
-}
-.tiptap-editor .page-break.ProseMirror-selectednode .page-break-label,
-.tiptap-editor .section-break.ProseMirror-selectednode .section-break-label {
-  border-color: #2563eb;
-  color: #1d4ed8;
+
+/* When ProseMirror inserts our auto-break as a child of a <p>, browsers
+   try to treat it as inline. Force block-level layout so the gutter
+   always spans the full paper width. */
+.tiptap-editor .auto-page-break {
+  display: block !important;
 }
 
 /* Find & replace highlights */

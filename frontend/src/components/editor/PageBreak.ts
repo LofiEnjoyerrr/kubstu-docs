@@ -66,7 +66,7 @@ export const PageBreak = Node.create({
         contenteditable: 'false',
       }),
       ['div', { class: 'page-break-paper-end' }],
-      ['div', { class: 'page-break-gap' }, ['span', { class: 'page-break-label' }, 'Разрыв страницы']],
+      ['div', { class: 'page-break-gap' }],
       ['div', { class: 'page-break-paper-start' }],
     ]
   },
