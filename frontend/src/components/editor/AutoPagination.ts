@@ -1,6 +1,7 @@
 import { Extension } from '@tiptap/core'
 import { Plugin, PluginKey } from '@tiptap/pm/state'
 import { Decoration, DecorationSet } from '@tiptap/pm/view'
+import type { EditorView } from '@tiptap/pm/view'
 import type { EditorState } from '@tiptap/pm/state'
 
 /**
@@ -47,10 +48,67 @@ declare module '@tiptap/core' {
   }
 }
 
-/** Rough vertical space a single auto-break widget occupies, used to
- *  compensate for already-inserted decorations when computing where the
- *  next break should land inside a tall block. */
-const BREAK_VISUAL_HEIGHT = 12 + 56 + 28 + 28
+/**
+ * Visual height consumed by a single auto-break widget.
+ *
+ * Breaks are completely invisible (height: 0, no border, no gap) so they
+ * do not displace any content. This makes the editor show exactly the same
+ * amount of text per page as the exported DOCX — Word never sees the break
+ * widgets, so its pagination only changes when we inject positions at export
+ * time. The only visual element is the optional page-number label in the
+ * right margin, which is absolutely positioned and also does not affect flow.
+ */
+const BREAK_VISUAL_HEIGHT = 0
+
+/**
+ * Find the doc position at viewport Y `targetY` within a block node.
+ *
+ * `posAtCoords` uses `document.elementFromPoint` which returns null for
+ * coordinates outside the visible viewport — so it silently fails for any
+ * page break that falls below the scroll fold. When that happens we fall
+ * back to a binary search over `coordsAtPos`, which measures actual DOM
+ * rects and works for any position regardless of scroll.
+ */
+function posAtViewportY(
+  view: EditorView,
+  targetY: number,
+  probeX: number,
+  nodeStart: number,
+  nodeSize: number,
+): number | null {
+  const screenH = window.innerHeight || document.documentElement.clientHeight
+
+  // Fast path: target is inside the visible viewport.
+  if (targetY >= 0 && targetY <= screenH) {
+    const hit = view.posAtCoords({ left: probeX, top: targetY })
+    return hit?.pos ?? null
+  }
+
+  // Off-screen: binary-search using coordsAtPos, which works for any doc
+  // position even when the element is outside the viewport.
+  const lo0 = nodeStart + 1
+  const hi0 = nodeStart + nodeSize - 1
+  if (lo0 >= hi0) return null
+
+  // Find the smallest position where coordsAtPos(pos).top >= targetY.
+  let lo = lo0
+  let hi = hi0
+  for (let iter = 0; iter < 40; iter++) {
+    const mid = (lo + hi) >> 1
+    if (mid <= lo) break
+    let top: number
+    try {
+      top = view.coordsAtPos(mid).top
+    } catch {
+      break
+    }
+    if (top < targetY) lo = mid
+    else hi = mid
+  }
+
+  if (hi <= lo0 || hi >= hi0) return null
+  return hi
+}
 
 function buildBreakEl(): HTMLElement {
   const wrap = document.createElement('div')
@@ -58,17 +116,10 @@ function buildBreakEl(): HTMLElement {
   wrap.setAttribute('data-auto-page-break', 'true')
   wrap.setAttribute('contenteditable', 'false')
 
-  const end = document.createElement('div')
-  end.className = 'page-break-paper-end'
-  wrap.appendChild(end)
-
-  const gap = document.createElement('div')
-  gap.className = 'page-break-gap'
-  wrap.appendChild(gap)
-
-  const start = document.createElement('div')
-  start.className = 'page-break-paper-start'
-  wrap.appendChild(start)
+  // Empty span updated by updatePageBreakChrome when page numbers are on.
+  const label = document.createElement('span')
+  label.className = 'page-break-page-label'
+  wrap.appendChild(label)
 
   return wrap
 }
@@ -212,9 +263,8 @@ export const AutoPagination = Extension.create<AutoPaginationOptions>({
               let safety = 0
               while (blockBottom > pageBottomNow + 0.5 && safety < 200) {
                 safety++
-                const coords = view.posAtCoords({ left: probeX, top: pageBottomNow })
-                if (!coords) break
-                const pos = coords.pos
+                const pos = posAtViewportY(view, pageBottomNow, probeX, offset, node.nodeSize)
+                if (pos === null) break
 
                 // The position must sit AFTER this block's start, AFTER
                 // any previously pushed break, and BEFORE the block's

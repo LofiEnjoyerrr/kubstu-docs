@@ -58,12 +58,10 @@ export const SectionBreak = Node.create({
       'div',
       mergeAttributes(HTMLAttributes, {
         'data-section-break': 'true',
-        class: 'section-break',
+        class: 'page-break section-break',
         contenteditable: 'false',
       }),
-      ['div', { class: 'page-break-paper-end' }],
-      ['div', { class: 'page-break-gap section-break-gap' }],
-      ['div', { class: 'page-break-paper-start' }],
+      ['span', { class: 'page-break-page-label' }],
     ]
   },
 

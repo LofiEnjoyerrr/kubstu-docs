@@ -434,13 +434,35 @@ function updatePageNumberChipLabels() {
 }
 
 /**
- * Walks the rendered editor DOM and decorates every page-break / section-break
- * with a label that names the page numbers on either side. This is read-only
- * eye candy so the document looks like a real stack of paper.
+ * Walks the rendered editor DOM and stamps each page-break / section-break gap
+ * with the page number of the page that follows it. Only runs when
+ * `showPageNumbers` is enabled; removes labels when it is disabled.
  */
-function updatePageBreakChrome(_ed: CoreEditor | Editor) {
-  // Page-break visuals are now label-free — just an empty gap with the
-  // paper-edge shadows. Nothing to update here.
+function updatePageBreakChrome(ed: CoreEditor | Editor) {
+  const root = ed.view?.dom as HTMLElement | null
+  if (!root) return
+
+  const breaks = Array.from(root.querySelectorAll('.page-break, .section-break'))
+
+  if (!(props.showPageNumbers ?? false)) {
+    breaks.forEach(el =>
+      el.querySelectorAll('.page-break-page-label').forEach(l => l.remove()),
+    )
+    return
+  }
+
+  breaks.forEach((el, idx) => {
+    // pageNumbers[idx] is the number of the page that ends at this break.
+    const pageNum = pageNumbersByIdx.value[idx]
+    if (pageNum === undefined) return
+    let label = el.querySelector('.page-break-page-label') as HTMLElement | null
+    if (!label) {
+      label = document.createElement('span')
+      label.className = 'page-break-page-label'
+      el.appendChild(label)
+    }
+    label.textContent = `Стр. ${pageNum}`
+  })
 }
 
 // ── current paragraph attrs (margin/indent) for toolbar bindings ────────────
@@ -486,12 +508,10 @@ function onSetParagraphAttr(which: 'marginTop' | 'marginRight' | 'marginBottom' 
 
 const paperWrapperStyle = computed(() => ({
   width: `${props.pageLayout.page_width}px`,
-  // The page-break gap reaches the full width of the paper by using a
-  // negative horizontal margin equal to the body padding. We expose those
-  // paddings here so the gap can read them.
+  // Exposed as CSS custom properties so the page-break ::before pseudo-element
+  // can extend from the text area to the full paper edge.
   '--page-margin-left': `${props.pageLayout.margin_left}px`,
   '--page-margin-right': `${props.pageLayout.margin_right}px`,
-  '--page-bg': '#f1f5f9', // matches outer container bg (slate-100)
 }))
 
 const mainStyle = computed(() => ({
@@ -693,6 +713,10 @@ watch(() => props.pageNumberStart, () => {
   if (editor.value) refreshPagination(editor.value)
 })
 
+watch(() => props.showPageNumbers, () => {
+  if (editor.value) nextTick(() => updatePageBreakChrome(editor.value!))
+})
+
 // When the user resizes the paper or shifts a margin we need to tell the
 // auto-pagination plugin about the new available height AND let it
 // re-measure block heights against the new width. Pushing a meta update
@@ -827,64 +851,61 @@ onBeforeUnmount(() => {
   outline-offset: -4px;
 }
 
-/* ── Page-break + section-break: the visual "between sheets" gap ───────── */
-.tiptap-editor .page-break,
-.tiptap-editor .section-break {
-  position: relative;
+/* ── Page-break / section-break: zero height, completely invisible ─────── */
+/*
+ * Breaks take no vertical space so the editor shows exactly the same
+ * amount of text per page as the exported DOCX. There is no visual
+ * separator between pages — text flows uninterrupted, just like a
+ * continuous word-processor document. The only indicator of a page
+ * boundary is the optional page-number label in the right margin.
+ */
+.tiptap-editor .page-break {
   display: block;
-  /* Reach out to the very edge of the paper so the gap looks like the
-     boundary between two sheets. */
-  margin-left: calc(-1 * var(--page-margin-left, 96px));
-  margin-right: calc(-1 * var(--page-margin-right, 96px));
-  margin-top: 28px;
-  margin-bottom: 28px;
-  background: var(--page-bg, #f1f5f9);
+  height: 0;
+  position: relative;
+  overflow: visible;
   user-select: none;
-}
-.tiptap-editor .page-break .page-break-paper-end,
-.tiptap-editor .section-break .page-break-paper-end {
-  /* Bottom-edge shadow of the previous sheet. */
-  height: 6px;
-  background: #fff;
-  box-shadow: 0 6px 8px -4px rgba(15, 23, 42, 0.18);
-  position: relative;
-  z-index: 1;
-}
-.tiptap-editor .page-break .page-break-paper-start,
-.tiptap-editor .section-break .page-break-paper-start {
-  /* Top-edge shadow of the next sheet. */
-  height: 6px;
-  background: #fff;
-  box-shadow: 0 -6px 8px -4px rgba(15, 23, 42, 0.18);
-  position: relative;
-  z-index: 1;
-}
-.tiptap-editor .page-break .page-break-gap,
-.tiptap-editor .section-break .page-break-gap {
-  height: 56px;
-  background: var(--page-bg, #f1f5f9);
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  position: relative;
-}
-.tiptap-editor .section-break .section-break-gap {
-  height: 80px;
-}
-/* Selected manual page break gets a soft blue tint so users know
-   they've clicked it. */
-.tiptap-editor .page-break.ProseMirror-selectednode .page-break-paper-end,
-.tiptap-editor .page-break.ProseMirror-selectednode .page-break-paper-start,
-.tiptap-editor .section-break.ProseMirror-selectednode .page-break-paper-end,
-.tiptap-editor .section-break.ProseMirror-selectednode .page-break-paper-start {
-  box-shadow: 0 0 0 2px rgba(37, 99, 235, 0.4);
+  margin: 0;
+  padding: 0;
 }
 
-/* When ProseMirror inserts our auto-break as a child of a <p>, browsers
-   try to treat it as inline. Force block-level layout so the gutter
-   always spans the full paper width. */
+/* Force block layout when ProseMirror places the widget inside a <p>. */
 .tiptap-editor .auto-page-break {
   display: block !important;
+}
+
+/*
+ * When the user explicitly selects a manual page break (click / arrow key),
+ * reveal it with a faint blue rule so they know something is there.
+ * Auto-breaks are never selectable, so this only applies to manual nodes.
+ */
+.tiptap-editor .page-break:not(.auto-page-break).ProseMirror-selectednode::before {
+  content: '';
+  position: absolute;
+  left: calc(-1 * var(--page-margin-left, 96px));
+  right: calc(-1 * var(--page-margin-right, 96px));
+  top: -1px;
+  height: 2px;
+  background: rgba(37, 99, 235, 0.4);
+  pointer-events: none;
+}
+
+/*
+ * Page-number label shown in the right margin at the bottom of each page
+ * when the "show page numbers" setting is on. Absolutely positioned so it
+ * never affects text layout.
+ */
+.page-break-page-label {
+  position: absolute;
+  /* Place label in the right margin: shift right past the text-area edge. */
+  right: calc(-1 * var(--page-margin-right, 96px) + 8px);
+  top: -1.4em;
+  font-size: 10px;
+  color: #94a3b8;
+  letter-spacing: 0.04em;
+  user-select: none;
+  pointer-events: none;
+  white-space: nowrap;
 }
 
 /* Find & replace highlights */
