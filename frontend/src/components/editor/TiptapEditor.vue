@@ -857,12 +857,19 @@ onBeforeUnmount(() => {
 
 /* ── Page-break / section-break: visible blank space between pages ────── */
 /*
- * Breaks take 40px of vertical space and render as a slate-100 strip
- * that bleeds past the paper's text area into its full width, with soft
- * shadows above and below so the segments look like the bottom of one
- * page and the top of the next. The DOCX export strips these widgets
- * and re-injects hard page breaks at the same doc positions, so text
- * still matches the exported DOCX page-for-page.
+ * Every "page" boundary renders as a slate-100 strip that bleeds past the
+ * paper's text area into the backdrop, with soft shadows top and bottom so
+ * each segment looks like the bottom of one sheet and the top of the next.
+ *
+ * Two flavours share the same gap:
+ *   - ``.auto-page-break`` — purely visual; the AutoPagination plugin
+ *     inserts these as ProseMirror widget decorations so the document tree
+ *     stays continuous (nothing is added to the user's text).
+ *   - ``.manual-page-break`` — a real node in the doc tree, inserted by
+ *     the user via the toolbar OR imported from a DOCX as
+ *     ``<w:br w:type="page"/>``. These additionally render a small
+ *     "Разрыв страницы" / "Разрыв раздела" pill in the centre of the gap
+ *     so the user can see at a glance that it's an explicit break.
  *
  * KEEP HEIGHT IN SYNC with BREAK_VISUAL_HEIGHT in AutoPagination.ts.
  */
@@ -913,6 +920,33 @@ onBeforeUnmount(() => {
 /* Force block layout when ProseMirror places the widget inside a <p>. */
 .tiptap-editor .auto-page-break {
   display: block !important;
+}
+
+/*
+ * Marker pill rendered ONLY by manual / imported page-break nodes
+ * (PageBreak.ts and SectionBreak.ts emit a ``.page-break-marker`` span;
+ * AutoPagination's widget does not). The pill sits in the centre of the
+ * gap so the user instantly recognizes it as a real break vs the silent
+ * seam the auto-paginator draws.
+ */
+.tiptap-editor .page-break-marker {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  font-size: 10px;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: #475569;
+  background: #fff;
+  padding: 3px 12px;
+  border: 1px dashed #94a3b8;
+  border-radius: 9999px;
+  user-select: none;
+  pointer-events: none;
+  white-space: nowrap;
+  z-index: 1;
+  box-shadow: 0 1px 2px 0 rgba(0, 0, 0, 0.04);
 }
 
 /*

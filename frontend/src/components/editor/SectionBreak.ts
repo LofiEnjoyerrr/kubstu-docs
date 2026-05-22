@@ -54,13 +54,17 @@ export const SectionBreak = Node.create({
   },
 
   renderHTML({ HTMLAttributes }) {
+    // ``manual-page-break`` shares the marker styling with PageBreak so the
+    // user always sees a clear pill for breaks they (or the source DOCX)
+    // explicitly placed — auto-pagination has no marker.
     return [
       'div',
       mergeAttributes(HTMLAttributes, {
         'data-section-break': 'true',
-        class: 'page-break section-break',
+        class: 'page-break section-break manual-page-break',
         contenteditable: 'false',
       }),
+      ['span', { class: 'page-break-marker' }, 'Разрыв раздела'],
       ['span', { class: 'page-break-page-label' }],
     ]
   },

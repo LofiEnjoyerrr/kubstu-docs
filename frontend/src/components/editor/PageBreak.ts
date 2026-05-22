@@ -58,13 +58,18 @@ export const PageBreak = Node.create({
   },
 
   renderHTML({ HTMLAttributes }) {
+    // The ``page-break-marker`` label visually announces that this is a
+    // user-inserted (or DOCX-imported) page break, NOT a seam introduced by
+    // the auto-paginator. AutoPagination's widget DOM has no marker, so the
+    // two are visually distinct without needing extra selectors.
     return [
       'div',
       mergeAttributes(HTMLAttributes, {
         'data-page-break': 'true',
-        class: 'page-break',
+        class: 'page-break manual-page-break',
         contenteditable: 'false',
       }),
+      ['span', { class: 'page-break-marker' }, 'Разрыв страницы'],
       ['span', { class: 'page-break-page-label' }],
     ]
   },

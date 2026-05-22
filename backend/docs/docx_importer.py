@@ -910,11 +910,15 @@ class DocxConverter:
                 else:
                     out.append({'type': 'hardBreak'})
             elif tag == qn('lastRenderedPageBreak'):
-                # Word writes this element wherever it broke a page during
-                # its last layout pass. Treating it as a real page break
-                # preserves the pagination the user saw in Word — that's
-                # what they expect to see when they import.
-                out.append({'type': 'pageBreak'})
+                # Word writes this element wherever IT laid out a page break
+                # during its last save — a layout cache, not user intent.
+                # Word almost always emits one alongside every real
+                # ``<w:br w:type="page"/>``, so honoring both produces two
+                # page breaks in the editor for a single break in the source.
+                # We DO let it bump the "has pagination" flag so the editor
+                # turns on page numbering, but we leave the break itself to
+                # the auto-paginator (which re-flows text page-by-page using
+                # the same page size Word uses).
                 self._has_pagination = True
             elif tag == qn('tab'):
                 # Tiptap doesn't have a tab node; render as 4 spaces.

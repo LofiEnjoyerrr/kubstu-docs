@@ -52,15 +52,6 @@ export interface ExportOptions {
   footerJson?: unknown
   showPageNumbers?: boolean
   pageNumberStart?: number
-  /**
-   * Doc positions where the editor's auto-pagination plugin inserted a
-   * visual page break. Injecting these as real ``pageBreak`` nodes during
-   * export forces Word to paginate at the same spots the user saw on
-   * screen — otherwise Word's own pagination engine, working with
-   * slightly different font metrics, would put a different number of
-   * lines on each page.
-   */
-  autoBreakPositions?: number[]
 }
 
 // ─── mappings ────────────────────────────────────────────────────────────────
@@ -544,144 +535,6 @@ function buildBandChildren(json: unknown): Paragraph[] {
     : [new Paragraph({ children: [] })]
 }
 
-// ─── auto-pagination → hard page breaks ──────────────────────────────────────
-
-const LEAF_NODE_TYPES = new Set([
-  'pageBreak',
-  'sectionBreak',
-  'image',
-  'hardBreak',
-  'pageNumber',
-  'horizontalRule',
-])
-
-/** Replicates ProseMirror's nodeSize: text contributes its length, leaves
- *  contribute 1, and containers contribute 2 (open + close) plus the size
- *  of their content. */
-function nodeSize(node: TiptapNode): number {
-  if (node.type === 'text') return (node.text ?? '').length
-  if (LEAF_NODE_TYPES.has(node.type)) return 1
-  let size = 2
-  for (const c of node.content ?? []) size += nodeSize(c)
-  return size
-}
-
-/**
- * Slice a flat array of inline nodes between two content-relative offsets.
- * Used to split a paragraph's children when an auto-break lands somewhere
- * inside its text.
- */
-function sliceInline(content: TiptapNode[], startOff: number, endOff: number): TiptapNode[] {
-  const result: TiptapNode[] = []
-  let pos = 0
-  for (const node of content) {
-    const ns = nodeSize(node)
-    const nodeEndPos = pos + ns
-    if (nodeEndPos <= startOff) {
-      pos = nodeEndPos
-      continue
-    }
-    if (pos >= endOff) break
-
-    if (node.type === 'text') {
-      const text = node.text ?? ''
-      const ss = Math.max(0, startOff - pos)
-      const se = Math.min(ns, endOff - pos)
-      const sliced = text.slice(ss, se)
-      if (sliced.length > 0) result.push({ ...node, text: sliced })
-    } else if (pos >= startOff && nodeEndPos <= endOff) {
-      result.push(node)
-    }
-
-    pos = nodeEndPos
-  }
-  return result
-}
-
-/** Split a paragraph/heading at the given doc positions (which must fall
- *  inside the node's text content). Returns one node per segment, with
- *  the same attrs but with content split at each break. */
-function splitTextBlock(node: TiptapNode, nodeStart: number, breaks: number[]): TiptapNode[] {
-  const contentStart = nodeStart + 1
-  const inlineNodes = node.content ?? []
-  const totalContent = inlineNodes.reduce((sum, c) => sum + nodeSize(c), 0)
-  const offsets = breaks.map((b) => Math.max(0, Math.min(totalContent, b - contentStart)))
-
-  const slices: TiptapNode[] = []
-  let start = 0
-  for (const off of offsets) {
-    slices.push({ ...node, content: sliceInline(inlineNodes, start, off) })
-    start = off
-  }
-  slices.push({ ...node, content: sliceInline(inlineNodes, start, totalContent) })
-  return slices
-}
-
-/**
- * Walk the top-level content and inject ``pageBreak`` nodes at every
- * auto-break position. Positions that sit between two blocks turn into
- * a standalone page break; positions that fall inside a paragraph or
- * heading split that paragraph at the break point. Unsplittable blocks
- * (tables, lists, images) get the break placed in front of them — the
- * cleanest fallback we can offer without rebuilding the schema.
- */
-function injectAutoBreaks(root: TiptapNode, autoPositions: number[]): TiptapNode {
-  if (!autoPositions.length || !root.content) return root
-  const sorted = [...autoPositions].sort((a, b) => a - b)
-
-  const newContent: TiptapNode[] = []
-  let pos = 0
-  let breakIdx = 0
-
-  function pushBreak() {
-    const last = newContent[newContent.length - 1]
-    if (!last || last.type !== 'pageBreak') {
-      newContent.push({ type: 'pageBreak' })
-    }
-  }
-
-  for (const node of root.content) {
-    const nodeStart = pos
-    const ns = nodeSize(node)
-    const nodeEnd = pos + ns
-
-    // Breaks at or before the start of this node — emit them as
-    // standalone breaks ahead of the node.
-    while (breakIdx < sorted.length && sorted[breakIdx] <= nodeStart) {
-      pushBreak()
-      breakIdx += 1
-    }
-
-    // Breaks strictly inside this node.
-    const inside: number[] = []
-    while (breakIdx < sorted.length && sorted[breakIdx] < nodeEnd) {
-      inside.push(sorted[breakIdx])
-      breakIdx += 1
-    }
-
-    if (inside.length === 0) {
-      newContent.push(node)
-    } else if (node.type === 'paragraph' || node.type === 'heading') {
-      const slices = splitTextBlock(node, nodeStart, inside)
-      for (let i = 0; i < slices.length; i++) {
-        // Drop empty leading/trailing slices to avoid stray empty paragraphs.
-        const slice = slices[i]
-        const isEmpty = !slice.content || slice.content.length === 0
-        if (!isEmpty || i === 0 || i === slices.length - 1) newContent.push(slice)
-        if (i < slices.length - 1) pushBreak()
-      }
-    } else {
-      // Can't split — push a break ahead of the unsplittable block instead.
-      pushBreak()
-      newContent.push(node)
-    }
-
-    pos = nodeEnd
-  }
-
-  return { ...root, content: newContent }
-}
-
 // ─── section grouping ────────────────────────────────────────────────────────
 
 interface SectionGroup {
@@ -737,14 +590,14 @@ export async function exportToDocx(
   title: string,
   options: ExportOptions = {},
 ): Promise<void> {
-  let root = json as TiptapNode
-
-  // Lock in the editor's auto-pagination before we hand the doc off to
-  // Word. Without this the DOCX would re-paginate using Word's own
-  // metrics and end up with a different number of lines on each page.
-  if (options.autoBreakPositions && options.autoBreakPositions.length > 0) {
-    root = injectAutoBreaks(root, options.autoBreakPositions)
-  }
+  // We deliberately do NOT bake the editor's auto-pagination positions into
+  // the DOCX. Doing that turned each invisible seam into a real
+  // ``<w:br w:type="page"/>``, and re-importing the file would surface those
+  // breaks as labeled manual page breaks the user never asked for. The
+  // editor and Word share page size + font defaults (see typographyDefaults
+  // and the docDefaults below), so Word paginates the document on its own
+  // at the same boundaries the editor showed.
+  const root = json as TiptapNode
 
   // Pre-load every image referenced in the body, header, and footer.
   await Promise.all([
