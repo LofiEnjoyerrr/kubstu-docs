@@ -323,6 +323,7 @@ class DocumentDocxImportAPIView(APIView):
         page_layout = result['page_layout']
         header_doc = result.get('header_content')
         footer_doc = result.get('footer_content')
+        has_pagination = bool(result.get('has_pagination'))
 
         # Persist atomically. We hand-roll the save instead of going through
         # the serializer so we can update many fields in one shot and bump
@@ -340,6 +341,11 @@ class DocumentDocxImportAPIView(APIView):
             document.header_content = json.dumps(header_doc)
         if footer_doc is not None:
             document.footer_content = json.dumps(footer_doc)
+        # When the source DOCX paginates (hard page break, section break,
+        # lastRenderedPageBreak, or PAGE field in header/footer) the user
+        # expects the editor to behave the same way out of the box.
+        if has_pagination:
+            document.show_page_numbers = True
         document.version = (document.version or 0) + 1
         document.save()
 

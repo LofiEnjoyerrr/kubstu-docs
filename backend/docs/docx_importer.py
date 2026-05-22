@@ -37,6 +37,15 @@ from django.core.files.base import ContentFile
 from django.core.files.storage import default_storage
 
 
+# Shared typography defaults. Must match the frontend's
+# ``components/editor/typographyDefaults.ts`` so that the editor and the DOCX
+# render the same amount of text per page when no explicit run formatting
+# is present.
+DEFAULT_FONT_FAMILY = 'Times New Roman'
+DEFAULT_FONT_SIZE_PT = 14.0
+DEFAULT_LINE_HEIGHT = 1.15
+
+
 # ─── XML namespaces ───────────────────────────────────────────────────────────
 
 W_NS = 'http://schemas.openxmlformats.org/wordprocessingml/2006/main'
@@ -224,9 +233,21 @@ class StyleDef:
         self.italic: bool = False
 
 
+class DocDefaults:
+    """Snapshot of ``<w:docDefaults>`` — applied to runs that lack explicit
+    font / size so the editor renders the same density of text the source
+    DOCX had. Values are stored in human units (point + name)."""
+
+    def __init__(self) -> None:
+        self.font_family: str | None = None
+        self.font_size_pt: float | None = None
+        self.line_height: float | None = None
+
+
 class StyleRegistry:
     def __init__(self) -> None:
         self._by_id: dict[str, StyleDef] = {}
+        self.doc_defaults = DocDefaults()
 
     @classmethod
     def from_xml(cls, xml: bytes | None) -> 'StyleRegistry':
@@ -237,6 +258,31 @@ class StyleRegistry:
             root = ET.fromstring(xml)
         except ET.ParseError:
             return reg
+        # docDefaults — global run / paragraph fallback.
+        dd = root.find(qn('docDefaults'))
+        if dd is not None:
+            rpr_default = first(dd, 'rPrDefault', 'rPr')
+            if rpr_default is not None:
+                rfont = rpr_default.find(qn('rFonts'))
+                if rfont is not None:
+                    reg.doc_defaults.font_family = (
+                        rfont.get(qn('ascii'))
+                        or rfont.get(qn('hAnsi'))
+                        or rfont.get(qn('cs'))
+                    )
+                sz = rpr_default.find(qn('sz'))
+                if sz is not None:
+                    reg.doc_defaults.font_size_pt = halfpt_to_pt(sz.get(qn('val')))
+            ppr_default = first(dd, 'pPrDefault', 'pPr')
+            if ppr_default is not None:
+                sp = ppr_default.find(qn('spacing'))
+                if sp is not None:
+                    line = sp.get(qn('line'))
+                    if line:
+                        try:
+                            reg.doc_defaults.line_height = round(float(line) / 240, 2)
+                        except ValueError:
+                            pass
         for st in root.findall(qn('style')):
             sid = st.get(qn('styleId'))
             if not sid:
@@ -308,6 +354,12 @@ class DocxConverter:
         self.numbering = NumberingRegistry()
         # rId → media path on the server (e.g. "/media/docs/4/images/abcdef.png")
         self._image_url_by_rid: dict[str, str] = {}
+        # Becomes True the moment we encounter ANY pagination signal — a hard
+        # page break, a ``lastRenderedPageBreak`` rendered by Word, a section
+        # break, or a PAGE / NUMPAGES field in a header / footer. Surfaces
+        # via the ``has_pagination`` key in convert()'s result so the API
+        # layer can flip ``show_page_numbers`` on.
+        self._has_pagination = False
 
     # ------------------------------------------------------------------ public
 
@@ -346,6 +398,7 @@ class DocxConverter:
                 'page_layout': page_layout,
                 'header_content': header_content,
                 'footer_content': footer_content,
+                'has_pagination': self._has_pagination,
             }
         finally:
             if self.zip:
@@ -491,6 +544,10 @@ class DocxConverter:
                 hf_root = ET.fromstring(xml)
             except ET.ParseError:
                 continue
+            # A PAGE / NUMPAGES field anywhere in a header / footer means the
+            # source DOCX intends to display page numbers — flag pagination.
+            if self._contains_page_field(hf_root):
+                self._has_pagination = True
             content = self._build_body(hf_root)
             doc = {'type': 'doc', 'content': content or [self._empty_paragraph()]}
             if kind == 'header' and header is None:
@@ -498,6 +555,24 @@ class DocxConverter:
             elif kind == 'footer' and footer is None:
                 footer = doc
         return header, footer
+
+    @staticmethod
+    def _contains_page_field(root: ET.Element) -> bool:
+        """True if the subtree contains a Word PAGE / NUMPAGES field — either
+        a simple field (``<w:fldSimple w:instr="PAGE"/>``) or a complex one
+        (``<w:instrText>PAGE</w:instrText>``)."""
+        for el in root.iter():
+            if el.tag == qn('fldSimple'):
+                instr = el.get(qn('instr')) or ''
+                if 'PAGE' in instr.upper():
+                    return True
+            elif el.tag == qn('instrText'):
+                txt = (el.text or '').upper()
+                if 'PAGE' in txt or 'NUMPAGES' in txt:
+                    return True
+            elif el.tag == qn('pgNum'):
+                return True
+        return False
 
     # ------------------------------------------------------------ body parse
 
@@ -553,11 +628,13 @@ class DocxConverter:
                 for block in self._build_paragraph_blocks(child):
                     out.append(block)
                 # An intermediate <w:sectPr> nested in a paragraph's pPr marks
-                # the END of a section. Convert it to a sectionBreak node.
+                # the END of a section. Convert it to a sectionBreak node and
+                # remember that the source DOCX paginates.
                 ppr = child.find(qn('pPr'))
                 if ppr is not None and ppr.find(qn('sectPr')) is not None:
                     sect_pr = ppr.find(qn('sectPr'))
                     out.append(self._section_break_from_sect_pr(sect_pr))
+                    self._has_pagination = True
             elif tag == qn('tbl'):
                 flush_list()
                 out.append(self._build_table(child))
@@ -829,6 +906,7 @@ class DocxConverter:
                 br_type = child.get(qn('type'))
                 if br_type == 'page':
                     out.append({'type': 'pageBreak'})
+                    self._has_pagination = True
                 else:
                     out.append({'type': 'hardBreak'})
             elif tag == qn('lastRenderedPageBreak'):
@@ -837,6 +915,7 @@ class DocxConverter:
                 # preserves the pagination the user saw in Word — that's
                 # what they expect to see when they import.
                 out.append({'type': 'pageBreak'})
+                self._has_pagination = True
             elif tag == qn('tab'):
                 # Tiptap doesn't have a tab node; render as 4 spaces.
                 out.append({'type': 'text', 'text': ' '})
@@ -911,6 +990,16 @@ class DocxConverter:
             font_family = defaults.font_family
         if not font_size_pt and defaults:
             font_size_pt = defaults.font_size_pt
+
+        # Final fallback — docDefaults from styles.xml, then the shared
+        # editor default. Apply explicitly so the editor renders the text
+        # with the same metrics Word used (which is what makes
+        # text-per-page actually match the source DOCX).
+        dd = self.styles.doc_defaults
+        if not font_family:
+            font_family = dd.font_family or DEFAULT_FONT_FAMILY
+        if not font_size_pt:
+            font_size_pt = dd.font_size_pt or DEFAULT_FONT_SIZE_PT
 
         if font_family:
             ts['fontFamily'] = font_family

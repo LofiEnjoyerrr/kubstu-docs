@@ -322,6 +322,7 @@ import { ref, computed, defineComponent, h, onMounted, onBeforeUnmount } from 'v
 import type { Editor } from '@tiptap/vue-3'
 import apiClient from '../../api/client'
 import { findReplaceKey } from './FindReplace'
+import { DEFAULT_FONT_FAMILY, DEFAULT_FONT_SIZE_PT } from './typographyDefaults'
 import type { PageLayout } from '../../types'
 
 const props = defineProps<{
@@ -424,21 +425,22 @@ function togglePop(name: 'page' | 'para' | 'hf') {
 // ── computed from editor state ────────────────────────────────────────────────
 
 const currentFontFamily = computed(() => {
-  // Empty fontFamily mark = use the editor's CSS default, which is Times
-  // New Roman. Show that in the dropdown so the user sees the truth.
-  return props.editor.getAttributes('textStyle').fontFamily || 'Times New Roman'
+  // Empty fontFamily mark = use the editor's CSS default. Show that in the
+  // dropdown so the user sees the truth.
+  return props.editor.getAttributes('textStyle').fontFamily || DEFAULT_FONT_FAMILY
 })
 
 const currentFontSize = computed(() => {
-  // Sizes are emitted as a CSS unit string ("12pt"). Older documents may
+  // Sizes are emitted as a CSS unit string ("14pt"). Older documents may
   // still hold "12px" — strip the unit and re-emit as pt so the dropdown
-  // option matches.
+  // option matches. Falls back to the shared default so users see the
+  // effective size even when no fontSize mark is set.
   const raw = props.editor.getAttributes('textStyle').fontSize ?? ''
-  if (!raw) return ''
+  if (!raw) return `${DEFAULT_FONT_SIZE_PT}pt`
   const m = String(raw).match(/^([\d.]+)/)
-  if (!m) return ''
+  if (!m) return `${DEFAULT_FONT_SIZE_PT}pt`
   const n = parseFloat(m[1])
-  if (isNaN(n)) return ''
+  if (isNaN(n)) return `${DEFAULT_FONT_SIZE_PT}pt`
   return `${Math.round(n)}pt`
 })
 const currentColor = computed(() => props.editor.getAttributes('textStyle').color ?? '#000000')

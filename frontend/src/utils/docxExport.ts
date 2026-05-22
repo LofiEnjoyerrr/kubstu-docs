@@ -25,6 +25,11 @@ import {
 } from 'docx'
 import { saveAs } from 'file-saver'
 import { resolveMediaUrl } from './media'
+import {
+  DEFAULT_FONT_FAMILY,
+  DEFAULT_FONT_SIZE_HALF_POINTS,
+  DEFAULT_LINE_SPACING_TWIPS,
+} from '../components/editor/typographyDefaults'
 import type { PageLayout } from '../types'
 
 // ─── types ────────────────────────────────────────────────────────────────────
@@ -826,6 +831,21 @@ export async function exportToDocx(
   const doc = new Document({
     creator: 'KubSTU Docs',
     title,
+    // Document defaults — runs/paragraphs without explicit values pick these
+    // up so the DOCX renders text at the same density as the editor.
+    styles: {
+      default: {
+        document: {
+          run: {
+            font: DEFAULT_FONT_FAMILY,
+            size: DEFAULT_FONT_SIZE_HALF_POINTS,
+          },
+          paragraph: {
+            spacing: { line: DEFAULT_LINE_SPACING_TWIPS, lineRule: 'auto' },
+          },
+        },
+      },
+    },
     sections,
   })
 

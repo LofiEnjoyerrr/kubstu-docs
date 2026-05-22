@@ -775,12 +775,16 @@ onBeforeUnmount(() => {
   border: none !important;
 }
 
-/* Default typography matches Word's default — Times New Roman, 12pt. This
-   applies wherever the user hasn't explicitly chosen a font/size. */
+/* Default typography. The editor and the DOCX export share these values so
+   the amount of text per page is identical in both — when a paragraph has no
+   explicit font / size / lineHeight, the editor renders with the constants
+   below and the export writes the same values into the DOCX's docDefaults.
+   Keep in sync with DEFAULT_FONT_* in src/components/editor/typographyDefaults.ts. */
 .tiptap-editor,
 .tiptap-mini {
   font-family: 'Times New Roman', Times, serif;
-  font-size: 12pt;
+  font-size: 14pt;
+  line-height: 1.15;
 }
 
 /* ── Paper container ───────────────────────────────────────────────────── */
@@ -851,22 +855,59 @@ onBeforeUnmount(() => {
   outline-offset: -4px;
 }
 
-/* ── Page-break / section-break: zero height, completely invisible ─────── */
+/* ── Page-break / section-break: visible blank space between pages ────── */
 /*
- * Breaks take no vertical space so the editor shows exactly the same
- * amount of text per page as the exported DOCX. There is no visual
- * separator between pages — text flows uninterrupted, just like a
- * continuous word-processor document. The only indicator of a page
- * boundary is the optional page-number label in the right margin.
+ * Breaks take 40px of vertical space and render as a slate-100 strip
+ * that bleeds past the paper's text area into its full width, with soft
+ * shadows above and below so the segments look like the bottom of one
+ * page and the top of the next. The DOCX export strips these widgets
+ * and re-injects hard page breaks at the same doc positions, so text
+ * still matches the exported DOCX page-for-page.
+ *
+ * KEEP HEIGHT IN SYNC with BREAK_VISUAL_HEIGHT in AutoPagination.ts.
  */
 .tiptap-editor .page-break {
   display: block;
-  height: 0;
   position: relative;
-  overflow: visible;
+  height: 40px;
+  /* Extend across the paper's text area into the white margin band and
+     show the slate-100 backdrop colour, so the page literally splits. */
+  margin-left: calc(-1 * var(--page-margin-left, 96px));
+  margin-right: calc(-1 * var(--page-margin-right, 96px));
+  background: #f1f5f9; /* slate-100 — matches paper backdrop */
   user-select: none;
-  margin: 0;
+  overflow: visible;
   padding: 0;
+}
+
+/* Soft shadow at the bottom of the previous page. */
+.tiptap-editor .page-break::before {
+  content: '';
+  position: absolute;
+  left: 0;
+  right: 0;
+  top: 0;
+  height: 10px;
+  background: linear-gradient(to bottom, rgba(0, 0, 0, 0.12), rgba(0, 0, 0, 0));
+  pointer-events: none;
+}
+
+/* Soft shadow at the top of the next page. */
+.tiptap-editor .page-break::after {
+  content: '';
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  height: 10px;
+  background: linear-gradient(to top, rgba(0, 0, 0, 0.12), rgba(0, 0, 0, 0));
+  pointer-events: none;
+}
+
+/* Section breaks: make the gap a little taller so the user can tell
+   "new section" apart from "new page". */
+.tiptap-editor .section-break {
+  height: 56px;
 }
 
 /* Force block layout when ProseMirror places the widget inside a <p>. */
@@ -876,36 +917,31 @@ onBeforeUnmount(() => {
 
 /*
  * When the user explicitly selects a manual page break (click / arrow key),
- * reveal it with a faint blue rule so they know something is there.
+ * highlight the gap with a blue tint so they know something is there.
  * Auto-breaks are never selectable, so this only applies to manual nodes.
  */
-.tiptap-editor .page-break:not(.auto-page-break).ProseMirror-selectednode::before {
-  content: '';
-  position: absolute;
-  left: calc(-1 * var(--page-margin-left, 96px));
-  right: calc(-1 * var(--page-margin-right, 96px));
-  top: -1px;
-  height: 2px;
-  background: rgba(37, 99, 235, 0.4);
-  pointer-events: none;
+.tiptap-editor .page-break:not(.auto-page-break).ProseMirror-selectednode {
+  outline: 2px solid rgba(37, 99, 235, 0.4);
+  outline-offset: -2px;
 }
 
 /*
- * Page-number label shown in the right margin at the bottom of each page
- * when the "show page numbers" setting is on. Absolutely positioned so it
- * never affects text layout.
+ * Page-number label shown in the gap at the bottom-right corner of each
+ * page when the "show page numbers" setting is on. The page-break widget
+ * already spans the full paper width (via negative margins), so the label
+ * is simply positioned relative to that parent.
  */
 .page-break-page-label {
   position: absolute;
-  /* Place label in the right margin: shift right past the text-area edge. */
-  right: calc(-1 * var(--page-margin-right, 96px) + 8px);
-  top: -1.4em;
+  right: calc(var(--page-margin-right, 96px) * 0.5);
+  bottom: 4px;
   font-size: 10px;
-  color: #94a3b8;
+  color: #64748b;
   letter-spacing: 0.04em;
   user-select: none;
   pointer-events: none;
   white-space: nowrap;
+  z-index: 1;
 }
 
 /* Find & replace highlights */

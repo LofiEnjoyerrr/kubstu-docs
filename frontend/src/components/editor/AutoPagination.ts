@@ -51,14 +51,18 @@ declare module '@tiptap/core' {
 /**
  * Visual height consumed by a single auto-break widget.
  *
- * Breaks are completely invisible (height: 0, no border, no gap) so they
- * do not displace any content. This makes the editor show exactly the same
- * amount of text per page as the exported DOCX — Word never sees the break
- * widgets, so its pagination only changes when we inject positions at export
- * time. The only visual element is the optional page-number label in the
- * right margin, which is absolutely positioned and also does not affect flow.
+ * Breaks render as a clearly visible "between-pages" gap so the user can
+ * tell where one page ends and the next begins. The gap takes real layout
+ * space, so the plugin advances ``currentPageTop`` by this many pixels
+ * past each break it inserts — that's how the next page's first line ends
+ * up at the right Y coordinate.
+ *
+ * KEEP IN SYNC with the ``height`` of ``.tiptap-editor .page-break`` in
+ * TiptapEditor.vue. Editor and DOCX still match text-per-page because the
+ * exporter strips break widgets and re-injects them as hard page breaks
+ * at the same doc positions — Word never sees the visual gap.
  */
-const BREAK_VISUAL_HEIGHT = 0
+const BREAK_VISUAL_HEIGHT = 40
 
 /**
  * Find the doc position at viewport Y `targetY` within a block node.
