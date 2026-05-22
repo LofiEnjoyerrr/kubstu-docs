@@ -787,6 +787,25 @@ onBeforeUnmount(() => {
   line-height: 1.15;
 }
 
+/*
+ * Reset browser default block-element margins inside the editor. By default
+ * <p> has 1em top + 1em bottom margin, and headings have even larger ones.
+ * Collapsed between adjacent paragraphs that's still ~1em of dead vertical
+ * space per paragraph — and Word's default "Normal" style adds zero before
+ * / after. With margins still in place the editor was wasting half of every
+ * page on whitespace and fitting roughly half the text Word does. Resetting
+ * here keeps the paragraph density identical between editor and DOCX
+ * (the export's docDefaults paragraph spacing matches: before=0, after=0).
+ *
+ * Per-paragraph overrides (the marginTop / marginBottom attributes set via
+ * the "Интервалы абзаца" popover) are applied via inline ``style`` and
+ * therefore beat this rule.
+ */
+.tiptap-editor :where(p, h1, h2, h3, h4, h5, h6, ul, ol, blockquote, pre) {
+  margin-top: 0;
+  margin-bottom: 0;
+}
+
 /* ── Paper container ───────────────────────────────────────────────────── */
 .paper-stack {
   position: relative;

@@ -686,6 +686,11 @@ export async function exportToDocx(
     title,
     // Document defaults — runs/paragraphs without explicit values pick these
     // up so the DOCX renders text at the same density as the editor.
+    //
+    // ``before: 0, after: 0`` matters: Word's built-in Normal style adds 8pt
+    // after each paragraph, which would let Word fit noticeably fewer lines
+    // per page than the editor (the editor's CSS reset puts zero margin on
+    // <p>). Setting these here aligns the two.
     styles: {
       default: {
         document: {
@@ -694,7 +699,12 @@ export async function exportToDocx(
             size: DEFAULT_FONT_SIZE_HALF_POINTS,
           },
           paragraph: {
-            spacing: { line: DEFAULT_LINE_SPACING_TWIPS, lineRule: 'auto' },
+            spacing: {
+              before: 0,
+              after: 0,
+              line: DEFAULT_LINE_SPACING_TWIPS,
+              lineRule: 'auto',
+            },
           },
         },
       },
