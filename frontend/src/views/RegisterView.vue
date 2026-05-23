@@ -81,6 +81,7 @@
                 :type="showPassword ? 'text' : 'password'"
                 autocomplete="new-password"
                 placeholder="минимум 8 символов"
+                minlength="8"
                 required
               />
               <button
@@ -162,6 +163,14 @@ async function handleRegister() {
   errors.username = ''
   errors.password = ''
   errors.global = ''
+
+  // Fail-fast client-side check so the user gets the same min-length
+  // message the backend would return, without a round-trip.
+  if (form.password.length < 8) {
+    errors.password = 'Пароль должен содержать не менее 8 символов.'
+    return
+  }
+
   isLoading.value = true
 
   try {

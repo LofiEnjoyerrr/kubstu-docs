@@ -123,12 +123,40 @@ function paragraphAlign(node: TiptapNode): (typeof AlignmentType)[keyof typeof A
   return ta ? ALIGN_MAP[ta] : undefined
 }
 
-function lineSpacing(node: TiptapNode): { line?: number; lineRule?: 'auto' } | undefined {
+function lineSpacing(node: TiptapNode): { line?: number; lineRule?: 'exact' } | undefined {
+  // We only emit a ``<w:spacing>`` for paragraphs whose Tiptap node carries
+  // an explicit ``lineHeight`` attribute. The Tiptap attribute is a unitless
+  // CSS multiplier (e.g. ``"1.5"``), interpreted against the run's font size.
+  // To preserve that intent in Word we convert it to an *exact* twips value
+  // — ``lineRule="auto"`` would let Word fall back to natural metrics for
+  // single-spaced paragraphs (defeating the purpose). Paragraphs without
+  // ``lineHeight`` get no line spec, which lets Word use the font's natural
+  // line height — matching the editor's ``line-height: normal`` default.
   const lh = node.attrs?.lineHeight as string | undefined
   if (!lh) return undefined
   const n = parseFloat(lh)
   if (isNaN(n)) return undefined
-  return { line: Math.round(240 * n), lineRule: 'auto' }
+  const fontSizePt = readRunFontSizePt(node) ?? 14
+  const twips = Math.round(n * fontSizePt * 20)
+  return { line: twips, lineRule: 'exact' }
+}
+
+function readRunFontSizePt(node: TiptapNode): number | undefined {
+  // Find the first text run's ``fontSize`` mark to anchor the line-height
+  // multiplier against. Without this we'd assume 14pt for every paragraph,
+  // so a paragraph whose runs are explicitly 11pt would round-trip with
+  // a line that's ~27% too tall.
+  for (const child of node.content ?? []) {
+    if (child.type !== 'text') continue
+    const ts = child.marks?.find(m => m.type === 'textStyle')
+    const size = (ts?.attrs as Record<string, string> | undefined)?.fontSize
+    if (!size) continue
+    const m = size.match(/^([\d.]+)/)
+    if (!m) continue
+    const n = parseFloat(m[1])
+    if (!isNaN(n)) return n
+  }
+  return undefined
 }
 
 function paragraphSpacing(node: TiptapNode): any {
@@ -691,6 +719,13 @@ export async function exportToDocx(
     // after each paragraph, which would let Word fit noticeably fewer lines
     // per page than the editor (the editor's CSS reset puts zero margin on
     // <p>). Setting these here aligns the two.
+    //
+    // Pin docDefaults line spacing to the same fixed multiplier the editor
+    // uses via CSS ``line-height: 1.2`` (DEFAULT_LINE_SPACING_TWIPS in
+    // typographyDefaults). ``lineRule="atLeast"`` so taller inline content
+    // (e.g. an image in a paragraph) gets the room it needs without being
+    // clipped, while text-only paragraphs land on exactly the same pixel
+    // height in both renderers.
     styles: {
       default: {
         document: {
@@ -703,7 +738,7 @@ export async function exportToDocx(
               before: 0,
               after: 0,
               line: DEFAULT_LINE_SPACING_TWIPS,
-              lineRule: 'auto',
+              lineRule: 'atLeast',
             },
           },
         },

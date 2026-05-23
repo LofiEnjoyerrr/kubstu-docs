@@ -44,6 +44,7 @@ INSTALLED_APPS = [
     'users',
     'docs',
     'realtime',
+    'notifications',
 ]
 
 MIDDLEWARE = [
@@ -147,6 +148,26 @@ MEDIA_ROOT = os.path.join(BASE_DIR, 'media/')
 
 CELERY_BROKER_URL = env('CELERY_BROKER_URL', default='redis://127.0.0.1:6379/1')
 CELERY_RESULT_BACKEND = env('CELERY_RESULT_BACKEND', default='redis://127.0.0.1:6379/2')
+
+# Cache backed by the same Redis instance the channel layer uses. The push
+# throttle (``notifications.tasks``) uses Django's cache API to enforce the
+# 15-minute freeze per (owner, doc, editor) tuple — Redis gives us atomic
+# ``cache.add`` semantics that "first writer wins" across workers.
+CACHES = {
+    'default': {
+        'BACKEND': 'django_redis.cache.RedisCache',
+        'LOCATION': env('CACHE_REDIS_URL', default='redis://redis:6379/4'),
+    },
+}
+
+# Web Push (VAPID). Generate with:
+#   python manage.py shell -c "from py_vapid import Vapid; v=Vapid(); v.generate_keys(); \
+#     print('priv:', v.private_pem().decode()); print('pub:', v.public_key.public_bytes(...))"
+# or use any VAPID generator. ``VAPID_CLAIM_SUB`` must be a mailto:/https: URI
+# identifying the sender to the push service.
+VAPID_PUBLIC_KEY = env('VAPID_PUBLIC_KEY', default='')
+VAPID_PRIVATE_KEY = env('VAPID_PRIVATE_KEY', default='')
+VAPID_CLAIM_SUB = env('VAPID_CLAIM_SUB', default='mailto:admin@example.com')
 
 EMAIL_HOST = 'smtp.yandex.ru'
 EMAIL_PORT = 465

@@ -58,6 +58,45 @@
 
         <div class="divider" />
 
+        <!-- Push notifications -->
+        <div class="flex items-start justify-between gap-4">
+          <div>
+            <p class="font-semibold text-slate-800">Push-уведомления в браузере</p>
+            <p class="text-sm text-slate-500 mt-0.5">
+              Когда другой пользователь начинает менять ваш документ, вы
+              получите уведомление в браузере — даже если вкладка закрыта.
+              Чтобы не спамить, повторные уведомления о том же документе и
+              том же пользователе приостанавливаются на 15 минут.
+            </p>
+            <p
+              v-if="push.state.value === 'denied'"
+              class="text-xs text-amber-600 mt-1"
+            >
+              Браузер заблокировал уведомления для этого сайта. Включите их
+              в настройках сайта в браузере и перезагрузите страницу.
+            </p>
+            <p
+              v-else-if="push.state.value === 'unsupported'"
+              class="text-xs text-slate-400 mt-1"
+            >
+              Этот браузер не поддерживает push-уведомления.
+            </p>
+            <p v-if="push.error.value" class="text-xs text-red-600 mt-1">
+              {{ push.error.value }}
+            </p>
+          </div>
+          <button
+            type="button"
+            class="btn-primary shrink-0"
+            :disabled="!push.supported || push.isBusy.value || push.state.value === 'denied'"
+            @click="onTogglePush"
+          >
+            {{ pushButtonLabel }}
+          </button>
+        </div>
+
+        <div class="divider" />
+
         <!-- Form -->
         <form @submit.prevent="saveProfile" class="flex flex-col gap-4">
           <div class="grid grid-cols-2 gap-4">
@@ -128,6 +167,7 @@
 import { ref, reactive, computed, onMounted } from 'vue'
 import { useAuthStore } from '../stores/auth'
 import { resolveMediaUrl } from '../utils/media'
+import { usePushNotifications } from '../composables/usePushNotifications'
 
 const auth = useAuthStore()
 const avatarInput = ref<HTMLInputElement | null>(null)
@@ -139,6 +179,24 @@ const saveError = ref('')
 
 const form = reactive({ first_name: '', last_name: '', username: '' })
 const errors = reactive({ username: '' })
+
+const push = usePushNotifications()
+
+const pushButtonLabel = computed(() => {
+  switch (push.state.value) {
+    case 'subscribing': return 'Включаем…'
+    case 'unsubscribing': return 'Выключаем…'
+    case 'enabled': return 'Отключить уведомления'
+    case 'denied': return 'Заблокировано'
+    case 'unsupported': return 'Не поддерживается'
+    default: return 'Включить уведомления'
+  }
+})
+
+async function onTogglePush() {
+  if (push.isEnabled.value) await push.disable()
+  else await push.enable()
+}
 
 const initials = computed(() => {
   const u = auth.user

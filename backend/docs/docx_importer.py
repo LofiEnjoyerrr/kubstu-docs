@@ -40,10 +40,11 @@ from django.core.files.storage import default_storage
 # Shared typography defaults. Must match the frontend's
 # ``components/editor/typographyDefaults.ts`` so that the editor and the DOCX
 # render the same amount of text per page when no explicit run formatting
-# is present.
+# is present. We intentionally do NOT pin a default line height — the editor's
+# CSS uses ``line-height: normal`` and we only emit an explicit ``lineHeight``
+# attribute for paragraphs whose source DOCX requested a non-auto line rule.
 DEFAULT_FONT_FAMILY = 'Times New Roman'
 DEFAULT_FONT_SIZE_PT = 14.0
-DEFAULT_LINE_HEIGHT = 1.15
 
 
 # ─── XML namespaces ───────────────────────────────────────────────────────────
@@ -241,7 +242,6 @@ class DocDefaults:
     def __init__(self) -> None:
         self.font_family: str | None = None
         self.font_size_pt: float | None = None
-        self.line_height: float | None = None
 
 
 class StyleRegistry:
@@ -273,16 +273,6 @@ class StyleRegistry:
                 sz = rpr_default.find(qn('sz'))
                 if sz is not None:
                     reg.doc_defaults.font_size_pt = halfpt_to_pt(sz.get(qn('val')))
-            ppr_default = first(dd, 'pPrDefault', 'pPr')
-            if ppr_default is not None:
-                sp = ppr_default.find(qn('spacing'))
-                if sp is not None:
-                    line = sp.get(qn('line'))
-                    if line:
-                        try:
-                            reg.doc_defaults.line_height = round(float(line) / 240, 2)
-                        except ValueError:
-                            pass
         for st in root.findall(qn('style')):
             sid = st.get(qn('styleId'))
             if not sid:
@@ -753,11 +743,24 @@ class DocxConverter:
                         n = 0
                     if n:
                         if rule in (None, 'auto'):
-                            # 240 = single line
-                            line_height = f'{round(n / 240, 2)}'
+                            # ``auto`` means Word uses the larger of the
+                            # suggested value or the font's natural line
+                            # height. CSS has no equivalent — a fixed
+                            # ``line-height`` multiplier resolves to a
+                            # different pixel height than Word's natural
+                            # metrics, so editor pages drift out of sync
+                            # with the exported DOCX. Leave it unset so
+                            # the editor falls back to its CSS default of
+                            # ``line-height: normal`` (the browser's
+                            # natural metrics), which matches Word.
+                            line_height = None
                         else:
-                            # 'exact' or 'atLeast' → twips; convert to multiplier vs 240
-                            line_height = f'{round(n / 240, 2)}'
+                            # ``exact`` / ``atLeast`` — value is in twips,
+                            # not 240ths. Convert to a multiplier against
+                            # the run font size when possible; otherwise
+                            # leave it unset.
+                            pt = n / 20.0
+                            line_height = f'{round(pt / DEFAULT_FONT_SIZE_PT, 3)}'
 
         # Assemble Tiptap attrs (only when set)
         if alignment in {'left', 'center', 'right', 'justify'}:

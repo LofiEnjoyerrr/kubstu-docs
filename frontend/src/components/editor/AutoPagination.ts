@@ -262,8 +262,19 @@ export const AutoPagination = Extension.create<AutoPaginationOptions>({
               // we need to break INSIDE the block. We probe the editor
               // at every page-bottom Y and let ProseMirror tell us what
               // doc position corresponds to that pixel.
+              //
+              // Probe at the LEFT edge of the block, not the middle.
+              // ``posAtCoords({left: middleX, top: pageBottomY})`` returns
+              // a doc position somewhere in the middle of whichever line
+              // straddles ``pageBottomY`` — inserting a block widget
+              // there forces a visual line break mid-word, so the last
+              // line on the page only fills up to where the break
+              // landed. Probing at the left edge instead returns the
+              // START of the straddling line, so the whole line moves
+              // to the next page and the previous line fills out to the
+              // right margin like Word and Google Docs do.
               let pageBottomNow = currentPageTop + pageHeight
-              const probeX = elRect.left + Math.max(40, elRect.width * 0.5)
+              const probeX = elRect.left + 1
               let safety = 0
               while (blockBottom > pageBottomNow + 0.5 && safety < 200) {
                 safety++
@@ -280,10 +291,19 @@ export const AutoPagination = Extension.create<AutoPaginationOptions>({
                 if (pos >= offset + node.nodeSize) break
 
                 positions.push(pos)
-                // The next page starts past this break. We add the break
-                // widget's height so the next probe falls in real content
-                // rather than landing inside the break we just placed.
-                currentPageTop = pageBottomNow + BREAK_VISUAL_HEIGHT
+                // Advance to the *current* Y of the content that will sit
+                // at the top of the next page. We are measuring the
+                // pre-break layout — once the break decoration lands,
+                // every block past ``pageBottomNow`` shifts down by
+                // ``BREAK_VISUAL_HEIGHT``. So the doc position that will
+                // be at the next page's top in the future layout is the
+                // one currently at viewport Y = pageBottomNow, NOT
+                // pageBottomNow + BREAK_VISUAL_HEIGHT. The earlier
+                // version added the gap height and consequently placed
+                // every subsequent break one extra line further into the
+                // paragraph, so pages 2+ ended up taller than the actual
+                // page area (and held more text than the exported DOCX).
+                currentPageTop = pageBottomNow
                 pageBottomNow = currentPageTop + pageHeight
               }
             })

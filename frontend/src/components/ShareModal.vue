@@ -42,10 +42,16 @@
                 @click="selectUser(u)"
               >
                 <div
-                  class="w-8 h-8 rounded-full flex items-center justify-center text-white text-xs font-bold shrink-0"
+                  class="w-8 h-8 rounded-full flex items-center justify-center text-white text-xs font-bold shrink-0 overflow-hidden"
                   :style="{ backgroundColor: u.color }"
                 >
-                  {{ u.username[0].toUpperCase() }}
+                  <img
+                    v-if="resolveMediaUrl(u.avatar)"
+                    :src="resolveMediaUrl(u.avatar)!"
+                    class="w-8 h-8 rounded-full object-cover"
+                    alt=""
+                  />
+                  <span v-else>{{ u.username[0].toUpperCase() }}</span>
                 </div>
                 <div class="min-w-0">
                   <p class="text-sm font-medium text-slate-800 truncate">{{ u.username }}</p>
@@ -57,10 +63,16 @@
             <!-- Add panel for selected user -->
             <div v-if="selectedUser" class="mt-3 flex items-center gap-3 p-3 bg-primary-50 rounded-xl border border-primary-200">
               <div
-                class="w-8 h-8 rounded-full flex items-center justify-center text-white text-xs font-bold shrink-0"
+                class="w-8 h-8 rounded-full flex items-center justify-center text-white text-xs font-bold shrink-0 overflow-hidden"
                 :style="{ backgroundColor: selectedUser.color }"
               >
-                {{ selectedUser.username[0].toUpperCase() }}
+                <img
+                  v-if="resolveMediaUrl(selectedUser.avatar)"
+                  :src="resolveMediaUrl(selectedUser.avatar)!"
+                  class="w-8 h-8 rounded-full object-cover"
+                  alt=""
+                />
+                <span v-else>{{ selectedUser.username[0].toUpperCase() }}</span>
               </div>
               <div class="flex-1 min-w-0">
                 <p class="text-sm font-medium text-slate-800 truncate">{{ selectedUser.username }}</p>
@@ -100,10 +112,22 @@
                 class="flex items-center gap-3"
               >
                 <div
-                  class="w-8 h-8 rounded-full flex items-center justify-center text-white text-xs font-bold shrink-0"
+                  class="w-8 h-8 rounded-full flex items-center justify-center text-white text-xs font-bold shrink-0 overflow-hidden"
                   :style="{ backgroundColor: access.color }"
                 >
-                  <img v-if="access.avatar" :src="access.avatar" class="w-8 h-8 rounded-full object-cover" />
+                  <!-- ``access.avatar`` is a relative ``/media/...`` path coming
+                       from the backend. Rendering it raw makes the browser
+                       resolve it against the frontend origin (Vite on :5173 or
+                       the static host in prod) instead of Django — same as the
+                       rest of the app, we route it through ``resolveMediaUrl``
+                       so it points at the backend regardless of where the page
+                       was served from. -->
+                  <img
+                    v-if="resolveMediaUrl(access.avatar)"
+                    :src="resolveMediaUrl(access.avatar)!"
+                    class="w-8 h-8 rounded-full object-cover"
+                    alt=""
+                  />
                   <span v-else>{{ access.username[0].toUpperCase() }}</span>
                 </div>
                 <div class="flex-1 min-w-0">
@@ -139,6 +163,7 @@
 import { ref, onMounted } from 'vue'
 import type { DocumentAccess, User } from '../types'
 import { useDocumentsStore } from '../stores/documents'
+import { resolveMediaUrl } from '../utils/media'
 import * as usersApi from '../api/users'
 
 const props = defineProps<{ docId: number; accesses: DocumentAccess[] }>()

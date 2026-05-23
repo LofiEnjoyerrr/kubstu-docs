@@ -47,6 +47,16 @@ class CredentialsAvailableSerializer(serializers.Serializer):
 class RegisterSerializer(serializers.ModelSerializer):
 
     ip = serializers.IPAddressField()
+    # Enforce the same minimum length the password-reset flow uses, so the
+    # first password a user picks can't be weaker than the one they'd be
+    # forced to pick later via PasswordResetConfirmSerializer.
+    password = serializers.CharField(
+        min_length=8,
+        write_only=True,
+        error_messages={
+            'min_length': 'Пароль должен содержать не менее 8 символов.',
+        },
+    )
 
     class Meta:
         model = User

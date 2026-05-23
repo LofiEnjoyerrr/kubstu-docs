@@ -6,6 +6,7 @@ from channels.generic.websocket import AsyncWebsocketConsumer
 from django.db.models import F
 
 from docs.models import Document, DocumentAccess
+from notifications.tasks import enqueue_edit_notification
 
 # In-process presence registry: group_name -> {channel_name -> user_info dict}
 # NOTE: per-worker; acceptable for single-node deployments.
@@ -21,6 +22,10 @@ class DocumentConsumer(AsyncWebsocketConsumer):
         self.group_name = f'doc_{self.doc_id}'
         self.user = self.scope['user']
         self.user_info: dict = {}
+        # Populated by ``_check_access`` and read by ``_handle_edit`` so we
+        # know who to notify (owner) and whether to skip (self-edit).
+        self.doc_owner_id: int | None = None
+        self.doc_title: str = ''
 
         if not await self._check_access():
             await self.close(code=4003)
@@ -114,6 +119,29 @@ class DocumentConsumer(AsyncWebsocketConsumer):
             'version': new_version,
             **self.user_info,
         })
+
+        # Notify the document owner that someone else is editing.
+        # ``enqueue_edit_notification`` handles the 15-min throttle and the
+        # self-edit skip internally so we just enqueue unconditionally for
+        # any authenticated editor. The task name lives on the Celery
+        # workers; this call is fire-and-forget.
+        user = self.user
+        if (
+            user.is_authenticated
+            and self.doc_owner_id is not None
+            and self.doc_owner_id != user.pk
+        ):
+            try:
+                enqueue_edit_notification(
+                    owner_id=self.doc_owner_id,
+                    doc_id=int(self.doc_id),
+                    editor_id=user.pk,
+                    editor_username=user.username,
+                    doc_title=self.doc_title,
+                )
+            except Exception:  # noqa: BLE001
+                # Notification dispatch must never break the edit pipeline.
+                pass
 
     async def _handle_cursor(self, data):
         """
@@ -255,9 +283,16 @@ class DocumentConsumer(AsyncWebsocketConsumer):
     @database_sync_to_async
     def _check_access(self) -> bool:
         try:
-            doc = Document.objects.only('id', 'is_public', 'owner_id').get(pk=self.doc_id)
+            doc = Document.objects.only(
+                'id', 'is_public', 'owner_id', 'title',
+            ).get(pk=self.doc_id)
         except Document.DoesNotExist:
             return False
+
+        # Stash the owner + title so ``_handle_edit`` can dispatch
+        # notifications without a second query per edit.
+        self.doc_owner_id = doc.owner_id
+        self.doc_title = doc.title
 
         if doc.is_public:
             return True
