@@ -271,7 +271,7 @@
         />
         Показывать номера страниц
       </label>
-      <NumberField label="Начать со страницы" :value="pageNumberStart" :min="1" :max="99999" @change="v => $emit('setPageNumberStart', v)" />
+      <NumberField label="Начать со страницы" :value="pageNumberStart" :min="0" :max="99999" @change="v => $emit('setPageNumberStart', v)" />
       <button
         type="button"
         class="btn-secondary btn-sm"

@@ -64,7 +64,9 @@ export function paginate(
 
   const pageNumbers: number[] = []
   const sectionIds: number[] = []
-  let current = Math.max(1, startAt | 0)
+  // ``startAt`` can be 0 — Word permits numbering the first page as 0
+  // (covers, prefaces, etc.). Clamp to non-negative integers only.
+  let current = Math.max(0, startAt | 0)
   let section = 0
 
   pageNumbers.push(current)

@@ -780,14 +780,17 @@ onBeforeUnmount(() => {
    explicit font / size / lineHeight, the editor renders with the constants
    below and the export writes the same values into the DOCX's docDefaults.
    Keep in sync with DEFAULT_FONT_* / DEFAULT_LINE_HEIGHT in
-   src/components/editor/typographyDefaults.ts. The line-height multiplier
-   is mirrored on the export side as ``line=336 lineRule=atLeast`` so both
-   the editor and Word render the same fixed pixel height per line. */
+   src/components/editor/typographyDefaults.ts. ``line-height: 1`` keeps
+   each line box exactly font-size tall — the export mirrors this with
+   ``line=280 lineRule=exact`` (= 14pt × 20 twips) so both renderers fit
+   the same number of lines per page. Anything larger here lets the
+   browser inflate lines past Word's exact rendering and the editor ends
+   up with noticeably more pages than the exported DOCX. */
 .tiptap-editor,
 .tiptap-mini {
   font-family: 'Times New Roman', Times, serif;
   font-size: 14pt;
-  line-height: 1.2;
+  line-height: 1;
 }
 
 /*

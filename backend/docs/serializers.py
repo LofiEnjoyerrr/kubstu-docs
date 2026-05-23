@@ -90,8 +90,10 @@ class PatchDocumentSerializer(serializers.ModelSerializer):
         return v
 
     def validate_page_number_start(self, v):
-        if v < 1 or v > 99999:
-            raise ValidationError('Номер первой страницы должен быть от 1 до 99999')
+        # 0 is allowed — Word lets the first page be numbered 0 (common for
+        # cover pages where the actual content begins on what becomes "page 1").
+        if v < 0 or v > 99999:
+            raise ValidationError('Номер первой страницы должен быть от 0 до 99999')
         return v
 
     def _validate_margin(self, v):

@@ -720,12 +720,14 @@ export async function exportToDocx(
     // per page than the editor (the editor's CSS reset puts zero margin on
     // <p>). Setting these here aligns the two.
     //
-    // Pin docDefaults line spacing to the same fixed multiplier the editor
-    // uses via CSS ``line-height: 1.2`` (DEFAULT_LINE_SPACING_TWIPS in
-    // typographyDefaults). ``lineRule="atLeast"`` so taller inline content
-    // (e.g. an image in a paragraph) gets the room it needs without being
-    // clipped, while text-only paragraphs land on exactly the same pixel
-    // height in both renderers.
+    // Pin docDefaults line spacing to the same multiplier the editor uses
+    // (``line-height: 1`` in CSS, ``DEFAULT_LINE_SPACING_TWIPS`` here).
+    // ``lineRule="exact"`` is deliberate: ``atLeast`` would let Word pad
+    // each line up to the font's natural ascent + descent + line gap,
+    // which for Times New Roman 14pt cuts the page capacity by ~15% vs
+    // what the editor computes. With ``exact`` Word renders precisely
+    // the value we give it, so the editor and the exported DOCX agree
+    // on lines-per-page.
     styles: {
       default: {
         document: {
@@ -738,7 +740,7 @@ export async function exportToDocx(
               before: 0,
               after: 0,
               line: DEFAULT_LINE_SPACING_TWIPS,
-              lineRule: 'atLeast',
+              lineRule: 'exact',
             },
           },
         },
