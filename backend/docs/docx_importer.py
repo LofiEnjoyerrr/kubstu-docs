@@ -27,14 +27,9 @@ from __future__ import annotations
 import io
 import os
 import re
-import uuid
 import zipfile
 from typing import Any
 from xml.etree import ElementTree as ET
-
-from django.conf import settings
-from django.core.files.base import ContentFile
-from django.core.files.storage import default_storage
 
 
 # Shared typography defaults. Must match the frontend's
@@ -331,18 +326,20 @@ class DocxConverter:
         docx_source: str | bytes | io.IOBase,
         *,
         document_pk: int,
-        media_subdir: str | None = None,
+        media_subdir: str | None = None,  # noqa: ARG002 — kept for callers
     ) -> None:
         self.source = docx_source
         self.document_pk = document_pk
-        self.media_subdir = media_subdir or f'docs/{document_pk}/images'
 
         # Populated by convert()
         self.zip: zipfile.ZipFile | None = None
         self.rels: dict[str, str] = {}
         self.styles = StyleRegistry()
         self.numbering = NumberingRegistry()
-        # rId → media path on the server (e.g. "/media/docs/4/images/abcdef.png")
+        # rId → base64 data URI for the embedded image (e.g.
+        # ``"data:image/png;base64,iVBORw0KGgo…"``). Inline embedding
+        # keeps the resulting document self-contained — see the comment
+        # on ``_upload_images`` for why we no longer write to disk.
         self._image_url_by_rid: dict[str, str] = {}
         # Becomes True the moment we encounter ANY pagination signal — a hard
         # page break, a ``lastRenderedPageBreak`` rendered by Word, a section
@@ -421,8 +418,46 @@ class DocxConverter:
 
     # ------------------------------------------------------------ image upload
 
+    # MIME types we recognise as raster images that can be embedded as
+    # data URIs. Everything else is silently skipped (Word ships .emf /
+    # .wmf for some shapes; those aren't browser-renderable).
+    _IMAGE_MIME_BY_EXT = {
+        '.png': 'image/png',
+        '.jpg': 'image/jpeg',
+        '.jpeg': 'image/jpeg',
+        '.gif': 'image/gif',
+        '.webp': 'image/webp',
+        '.bmp': 'image/bmp',
+    }
+
     def _upload_images(self) -> None:
-        """Pull every embedded image out of the DOCX and stash it in MEDIA_ROOT."""
+        """Embed every DOCX-embedded image as a base64 ``data:`` URI in
+        the resulting Tiptap JSON.
+
+        Previously we wrote the raw bytes to ``MEDIA_ROOT`` and emitted a
+        ``/media/...`` URL — the frontend then had to re-fetch each image
+        from that URL when building the exported DOCX. That fetch turned
+        out to be fragile across deployments (Vite proxies vs nginx vs
+        bare runserver, cross-origin + credentials CORS rules, ports not
+        exposed to the browser in docker-compose, …) and silently dropped
+        images from the export when it failed.
+
+        Embedding the bytes inline makes the document self-contained:
+            * the editor renders ``<img src="data:image/png;base64,…">``
+              directly, no fetch needed;
+            * the DOCX exporter already decodes ``data:`` URIs straight
+              into the binary it hands to the docx library (see
+              ``loadImage`` in ``frontend/src/utils/docxExport.ts``);
+            * the round-trip is hermetic — once the JSON is built, no
+              additional network call is required to display or export
+              the document.
+
+        The cost is a larger persisted JSON (base64 inflates by ~33%) and
+        a heavier WS broadcast on edits. For the typical academic / KR
+        document with a few cover-page images this is a fine trade-off
+        for actually-working exports.
+        """
+        import base64
         for rid, target in self.rels.items():
             if not target:
                 continue
@@ -432,14 +467,11 @@ class DocxConverter:
             except KeyError:
                 continue
             ext = os.path.splitext(target)[1].lower() or '.png'
-            if ext not in {'.png', '.jpg', '.jpeg', '.gif', '.webp', '.bmp', '.tiff'}:
+            mime = self._IMAGE_MIME_BY_EXT.get(ext)
+            if not mime:
                 continue
-            filename = f'{uuid.uuid4().hex}{ext}'
-            saved = default_storage.save(
-                f'{self.media_subdir}/{filename}',
-                ContentFile(blob),
-            )
-            self._image_url_by_rid[rid] = settings.MEDIA_URL + saved
+            encoded = base64.b64encode(blob).decode('ascii')
+            self._image_url_by_rid[rid] = f'data:{mime};base64,{encoded}'
 
     # ---------------------------------------------------------- page settings
 
@@ -602,36 +634,57 @@ class DocxConverter:
                 i = j
             list_buffer = []
 
-        for child in body:
-            tag = child.tag
-            if tag == qn('p'):
-                kind_level = self._paragraph_list_kind(child)
-                if kind_level is not None:
-                    kind, level = kind_level
-                    p_node = self._build_paragraph(child, in_list=True)
-                    list_buffer.append((kind, p_node, level))
+        def visit(node: ET.Element) -> None:
+            """Inner recursion so structured-document-tag (``<w:sdt>``)
+            wrappers can hand off their inner block content back to the
+            same handler. Word stores tables of contents (and a bunch of
+            other "content controls") inside ``<w:sdt><w:sdtContent>…``,
+            and silently dropping the SDT — which is what the original
+            top-level ``else: continue`` did — meant the entire TOC went
+            missing on import.
+            """
+            for child in node:
+                tag = child.tag
+                if tag == qn('p'):
+                    kind_level = self._paragraph_list_kind(child)
+                    if kind_level is not None:
+                        kind, level = kind_level
+                        p_node = self._build_paragraph(child, in_list=True)
+                        list_buffer.append((kind, p_node, level))
+                        continue
+                    flush_list()
+                    # _build_paragraph_blocks may emit multiple block nodes
+                    # when the paragraph contains inline images / page breaks
+                    # (block-level in our schema).
+                    for block in self._build_paragraph_blocks(child):
+                        out.append(block)
+                    # An intermediate <w:sectPr> nested in a paragraph's pPr
+                    # marks the END of a section. Convert it to a
+                    # sectionBreak node and remember the source DOCX paginates.
+                    ppr = child.find(qn('pPr'))
+                    if ppr is not None and ppr.find(qn('sectPr')) is not None:
+                        sect_pr = ppr.find(qn('sectPr'))
+                        out.append(self._section_break_from_sect_pr(sect_pr))
+                        self._has_pagination = True
+                elif tag == qn('tbl'):
+                    flush_list()
+                    out.append(self._build_table(child))
+                elif tag == qn('sdt'):
+                    # Structured document tag (e.g. the auto-generated
+                    # "Table of Contents" gallery). The user-visible
+                    # content lives under <w:sdtContent>; recurse into it
+                    # so the TOC paragraphs / hyperlinks / page numbers
+                    # come through as ordinary body content.
+                    sdt_content = child.find(qn('sdtContent'))
+                    if sdt_content is not None:
+                        visit(sdt_content)
+                else:
+                    # The body-final sectPr lives at the top level — we
+                    # skip it here (the layout/page setup parser handles
+                    # it separately).
                     continue
-                flush_list()
-                # _build_paragraph_blocks may emit multiple block nodes
-                # when the paragraph contains inline images / page breaks
-                # (block-level in our schema).
-                for block in self._build_paragraph_blocks(child):
-                    out.append(block)
-                # An intermediate <w:sectPr> nested in a paragraph's pPr marks
-                # the END of a section. Convert it to a sectionBreak node and
-                # remember that the source DOCX paginates.
-                ppr = child.find(qn('pPr'))
-                if ppr is not None and ppr.find(qn('sectPr')) is not None:
-                    sect_pr = ppr.find(qn('sectPr'))
-                    out.append(self._section_break_from_sect_pr(sect_pr))
-                    self._has_pagination = True
-            elif tag == qn('tbl'):
-                flush_list()
-                out.append(self._build_table(child))
-            else:
-                # The body-final sectPr lives at the top level — we skip it
-                # here (the layout/page setup parser handles it separately).
-                continue
+
+        visit(body)
         flush_list()
 
         if not out:
@@ -1066,6 +1119,16 @@ class DocxConverter:
 
     # ------------------------------------------------------------------ image
 
+    # Word's <wp:wrap*/> child elements map to docx-library wrap types.
+    # Order matters only as documentation; we look them up by name.
+    _WRAP_TAG_TO_NAME = {
+        'wrapNone': 'none',
+        'wrapSquare': 'square',
+        'wrapTight': 'tight',
+        'wrapThrough': 'through',
+        'wrapTopAndBottom': 'topAndBottom',
+    }
+
     def _image_from_drawing(self, drawing: ET.Element) -> dict | None:
         # Look for <a:blip r:embed="rIdN"/> anywhere under the drawing.
         blip = drawing.find(f'.//{A}blip')
@@ -1088,7 +1151,79 @@ class DocxConverter:
                 attrs['width'] = w
             if h:
                 attrs['height'] = h
+
+        # Capture floating-image positioning so the exporter can put the
+        # image back at the same anchored spot in the produced DOCX.
+        # ``<wp:anchor>`` = floating; ``<wp:inline>`` = inline-with-text.
+        # The editor still renders floating images inline (Tiptap has no
+        # native concept of anchored / behind-text floating), but the
+        # positioning metadata survives the round-trip so a re-export
+        # restores it.
+        anchor = drawing.find(f'.//{WP}anchor')
+        if anchor is not None:
+            floating = self._extract_anchor_positioning(anchor)
+            if floating:
+                attrs['floating'] = floating
+
         return {'type': 'image', 'attrs': attrs}
+
+    @classmethod
+    def _extract_anchor_positioning(cls, anchor: ET.Element) -> dict[str, Any] | None:
+        """
+        Pull positioning + wrap info out of a ``<wp:anchor>`` element.
+        Returns a dict shaped like the docx-library ``IFloating`` options
+        (with offsets kept in EMUs so no unit conversion is required at
+        export time).
+        """
+        out: dict[str, Any] = {}
+
+        # behindDoc: 1/0 attribute on the anchor itself.
+        behind = anchor.get('behindDoc')
+        if behind in ('1', 'true'):
+            out['behindDocument'] = True
+        elif behind in ('0', 'false'):
+            out['behindDocument'] = False
+
+        allow_overlap = anchor.get('allowOverlap')
+        if allow_overlap in ('1', 'true'):
+            out['allowOverlap'] = True
+
+        layout_in_cell = anchor.get('layoutInCell')
+        if layout_in_cell in ('1', 'true'):
+            out['layoutInCell'] = True
+
+        # Horizontal / vertical position. Each may carry either an
+        # alignment keyword or an absolute offset (in EMUs).
+        for axis, key in (('positionH', 'horizontalPosition'),
+                          ('positionV', 'verticalPosition')):
+            pos = anchor.find(qn(axis, WP_NS))
+            if pos is None:
+                continue
+            rel = pos.get('relativeFrom')
+            data: dict[str, Any] = {}
+            if rel:
+                data['relative'] = rel
+            align = pos.find(qn('align', WP_NS))
+            if align is not None and align.text:
+                data['align'] = align.text.strip()
+            offset = pos.find(qn('posOffset', WP_NS))
+            if offset is not None and offset.text:
+                try:
+                    data['offset'] = int(offset.text)
+                except ValueError:
+                    pass
+            if data:
+                out[key] = data
+
+        # Wrap mode. The wrap element is one of ``wrapNone``, ``wrapSquare``,
+        # ``wrapTight``, ``wrapThrough``, ``wrapTopAndBottom``. We store the
+        # human-readable name; the exporter translates to ``TextWrappingType``.
+        for tag_local, wrap_name in cls._WRAP_TAG_TO_NAME.items():
+            if anchor.find(qn(tag_local, WP_NS)) is not None:
+                out['wrap'] = wrap_name
+                break
+
+        return out or None
 
     def _image_from_pict(self, pict: ET.Element) -> dict | None:
         # Legacy VML images. Hunt for a v:imagedata id=.

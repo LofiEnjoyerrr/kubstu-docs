@@ -22,6 +22,44 @@ import { resolveMediaUrl } from '../../utils/media'
  * path, so saves and round-trips remain portable.
  */
 export const ResolvedImage = Image.extend({
+  /**
+   * Extra attributes preserved on round-trip:
+   *
+   *   - ``width`` / ``height`` — numeric pixel sizes from the DOCX
+   *     importer's ``<wp:extent>`` lookup. The editor doesn't display
+   *     these (Tiptap's stock Image just uses the natural intrinsic
+   *     size), but persisting them lets the export reproduce the same
+   *     dimensions in the generated DOCX.
+   *
+   *   - ``floating`` — opaque blob captured from ``<wp:anchor>``: wrap
+   *     mode, behind-document flag, horizontal/vertical positioning
+   *     (relativeFrom + offset or align). The editor renders floating
+   *     images inline (there's no first-class anchor concept in Tiptap),
+   *     but the export reads this back and reconstructs the original
+   *     anchored placement in the produced DOCX.
+   *
+   * Without declaring these here, ProseMirror's schema validation
+   * silently drops them on ``setContent`` — which is what was making
+   * the round-trip lose every cover-page image's positioning.
+   */
+  addAttributes() {
+    return {
+      ...this.parent?.(),
+      width: {
+        default: null,
+        // Don't render on the DOM element — let intrinsic size win.
+        renderHTML: () => ({}),
+      },
+      height: {
+        default: null,
+        renderHTML: () => ({}),
+      },
+      floating: {
+        default: null,
+        renderHTML: () => ({}),
+      },
+    }
+  },
   renderHTML({ HTMLAttributes }) {
     const attrs = { ...HTMLAttributes }
     const src = attrs.src

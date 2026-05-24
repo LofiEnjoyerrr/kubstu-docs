@@ -20,6 +20,11 @@ import {
   PageNumber as DocxPageNumber,
   NumberFormat,
   PageOrientation,
+  HorizontalPositionAlign,
+  HorizontalPositionRelativeFrom,
+  VerticalPositionAlign,
+  VerticalPositionRelativeFrom,
+  TextWrappingType,
   type IRunOptions,
   type ParagraphChild,
 } from 'docx'
@@ -311,6 +316,113 @@ function mimeToDocxType(mime: string): 'png' | 'jpg' | 'gif' | 'bmp' | 'svg' {
   return 'png'
 }
 
+/**
+ * Translate a positioning dict (as captured by the Python importer from
+ * ``<wp:anchor>``) into the ``IFloating`` shape the docx library expects.
+ *
+ * The dict carries strings for the ``relativeFrom`` and ``align``
+ * enumerations; the docx library uses the same literal values under the
+ * hood, so the conversion is mostly string → const lookup. Anything we
+ * can't recognise falls back to a safe default (``PAGE`` + ``LEFT/TOP``
+ * with offset 0) so an unrecognised wrap mode never blocks the export.
+ */
+function buildFloatingOptions(raw: Record<string, unknown>): any | null {
+  if (!raw || typeof raw !== 'object') return null
+
+  const hAlignMap: Record<string, (typeof HorizontalPositionAlign)[keyof typeof HorizontalPositionAlign]> = {
+    left: HorizontalPositionAlign.LEFT,
+    center: HorizontalPositionAlign.CENTER,
+    right: HorizontalPositionAlign.RIGHT,
+    inside: HorizontalPositionAlign.INSIDE,
+    outside: HorizontalPositionAlign.OUTSIDE,
+  }
+  const vAlignMap: Record<string, (typeof VerticalPositionAlign)[keyof typeof VerticalPositionAlign]> = {
+    top: VerticalPositionAlign.TOP,
+    center: VerticalPositionAlign.CENTER,
+    bottom: VerticalPositionAlign.BOTTOM,
+    inside: VerticalPositionAlign.INSIDE,
+    outside: VerticalPositionAlign.OUTSIDE,
+  }
+  const hRelMap: Record<string, (typeof HorizontalPositionRelativeFrom)[keyof typeof HorizontalPositionRelativeFrom]> = {
+    character: HorizontalPositionRelativeFrom.CHARACTER,
+    column: HorizontalPositionRelativeFrom.COLUMN,
+    insideMargin: HorizontalPositionRelativeFrom.INSIDE_MARGIN,
+    leftMargin: HorizontalPositionRelativeFrom.LEFT_MARGIN,
+    margin: HorizontalPositionRelativeFrom.MARGIN,
+    outsideMargin: HorizontalPositionRelativeFrom.OUTSIDE_MARGIN,
+    page: HorizontalPositionRelativeFrom.PAGE,
+    rightMargin: HorizontalPositionRelativeFrom.RIGHT_MARGIN,
+  }
+  const vRelMap: Record<string, (typeof VerticalPositionRelativeFrom)[keyof typeof VerticalPositionRelativeFrom]> = {
+    bottomMargin: VerticalPositionRelativeFrom.BOTTOM_MARGIN,
+    insideMargin: VerticalPositionRelativeFrom.INSIDE_MARGIN,
+    line: VerticalPositionRelativeFrom.LINE,
+    margin: VerticalPositionRelativeFrom.MARGIN,
+    outsideMargin: VerticalPositionRelativeFrom.OUTSIDE_MARGIN,
+    page: VerticalPositionRelativeFrom.PAGE,
+    paragraph: VerticalPositionRelativeFrom.PARAGRAPH,
+    topMargin: VerticalPositionRelativeFrom.TOP_MARGIN,
+  }
+  const wrapMap: Record<string, (typeof TextWrappingType)[keyof typeof TextWrappingType]> = {
+    none: TextWrappingType.NONE,
+    square: TextWrappingType.SQUARE,
+    tight: TextWrappingType.TIGHT,
+    through: TextWrappingType.TIGHT, // docx has no THROUGH; tight is the closest match
+    topAndBottom: TextWrappingType.TOP_AND_BOTTOM,
+  }
+
+  function buildAxis<R extends Record<string, string>, A extends Record<string, string>>(
+    data: Record<string, unknown> | undefined,
+    relMap: R,
+    alignMap: A,
+    fallbackRel: R[keyof R],
+    fallbackAlign: A[keyof A],
+  ) {
+    const out: { relative: R[keyof R]; align?: A[keyof A]; offset?: number } = {
+      relative: fallbackRel,
+    }
+    const rel = (data?.relative as string | undefined)
+    if (rel && rel in relMap) out.relative = relMap[rel] as R[keyof R]
+    const al = (data?.align as string | undefined)
+    if (al && al in alignMap) out.align = alignMap[al] as A[keyof A]
+    const off = data?.offset
+    if (typeof off === 'number') out.offset = off
+    if (out.align === undefined && out.offset === undefined) {
+      out.align = fallbackAlign
+    }
+    return out
+  }
+
+  const horizontalPosition = buildAxis(
+    raw.horizontalPosition as Record<string, unknown> | undefined,
+    hRelMap,
+    hAlignMap,
+    HorizontalPositionRelativeFrom.PAGE,
+    HorizontalPositionAlign.LEFT,
+  )
+  const verticalPosition = buildAxis(
+    raw.verticalPosition as Record<string, unknown> | undefined,
+    vRelMap,
+    vAlignMap,
+    VerticalPositionRelativeFrom.PAGE,
+    VerticalPositionAlign.TOP,
+  )
+
+  const floating: Record<string, unknown> = {
+    horizontalPosition,
+    verticalPosition,
+  }
+  if (raw.behindDocument === true) floating.behindDocument = true
+  if (raw.allowOverlap === true) floating.allowOverlap = true
+  if (raw.layoutInCell === true) floating.layoutInCell = true
+  const wrapName = (raw.wrap as string | undefined)
+  if (wrapName && wrapName in wrapMap) {
+    floating.wrap = { type: wrapMap[wrapName] }
+  }
+
+  return floating
+}
+
 function imageRunForNode(node: TiptapNode): ImageRun | null {
   const src = node.attrs?.src as string | undefined
   if (!src) return null
@@ -329,10 +441,18 @@ function imageRunForNode(node: TiptapNode): ImageRun | null {
     h = Math.round((explicitH ?? blob.height) * scale)
   }
 
+  // If the importer tagged this image as floating (it came from a
+  // <wp:anchor> in the source DOCX), pass the positioning through to
+  // the docx library so the exported file restores the anchor at the
+  // same location with the same wrap mode / behind-text flag.
+  const rawFloating = node.attrs?.floating as Record<string, unknown> | undefined
+  const floating = rawFloating ? buildFloatingOptions(rawFloating) : null
+
   return new ImageRun({
     data: blob.data as any,
     type: mimeToDocxType(blob.mime),
     transformation: { width: w, height: h },
+    ...(floating ? { floating } : {}),
   } as any)
 }
 
