@@ -92,41 +92,45 @@
   }
 }
 
-/* Tiptap editor styles */
+/* Tiptap editor styles.
+ *
+ * IMPORTANT: do NOT add ``margin-*``, ``leading-*`` or any other Tailwind
+ * utility that affects line height / vertical spacing here. The editor's
+ * per-page text density is controlled by the CSS in TiptapEditor.vue
+ * (``line-height: 1`` + zero margins on all block elements), which is the
+ * value mirrored on the export side as ``line=280 lineRule=exact`` and
+ * docDefaults ``before:0 after:0``. Any extra leading or margin we add in
+ * this file silently inflates per-line / per-paragraph height, causing the
+ * editor to spill text onto more pages than the exported DOCX would
+ * produce. Only purely visual properties (colors, font-weight, list
+ * markers, padding for list indent, code/blockquote chrome) belong here.
+ */
 .tiptap-editor {
   @apply outline-none min-h-full;
 }
 
-.tiptap-editor p {
-  @apply leading-relaxed mb-2;
-}
-
 .tiptap-editor h1 {
-  @apply text-3xl font-bold mb-4 mt-6 text-slate-900;
+  @apply text-3xl font-bold text-slate-900;
 }
 
 .tiptap-editor h2 {
-  @apply text-2xl font-semibold mb-3 mt-5 text-slate-900;
+  @apply text-2xl font-semibold text-slate-900;
 }
 
 .tiptap-editor h3 {
-  @apply text-xl font-semibold mb-2 mt-4 text-slate-900;
+  @apply text-xl font-semibold text-slate-900;
 }
 
 .tiptap-editor ul {
-  @apply list-disc pl-6 mb-3;
+  @apply list-disc pl-6;
 }
 
 .tiptap-editor ol {
-  @apply list-decimal pl-6 mb-3;
-}
-
-.tiptap-editor li {
-  @apply mb-1;
+  @apply list-decimal pl-6;
 }
 
 .tiptap-editor blockquote {
-  @apply border-l-4 border-primary-300 pl-4 italic text-slate-600 my-4;
+  @apply border-l-4 border-primary-300 pl-4 italic text-slate-600;
 }
 
 .tiptap-editor code {
@@ -134,7 +138,7 @@
 }
 
 .tiptap-editor pre {
-  @apply bg-slate-900 text-slate-100 rounded-lg p-4 overflow-x-auto my-4 font-mono text-sm;
+  @apply bg-slate-900 text-slate-100 rounded-lg p-4 overflow-x-auto font-mono text-sm;
 }
 
 .tiptap-editor pre code {
@@ -146,11 +150,11 @@
 }
 
 .tiptap-editor hr {
-  @apply border-slate-200 my-6;
+  @apply border-slate-200;
 }
 
 .tiptap-editor img {
-  @apply max-w-full rounded-lg my-4;
+  @apply max-w-full rounded-lg;
 }
 
 .tiptap-editor p.is-editor-empty:first-child::before {
