@@ -197,47 +197,52 @@ async function loadImage(src: string): Promise<ImageBlob | null> {
       for (let i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i)
       arrayBuffer = bytes.buffer
     } else {
-      // Route image fetches through the API endpoint instead of the bare
-      // ``/media/...`` static handler. Why this matters for export:
-      //   * The DOCX importer and the image-upload endpoint both store
-      //     images under ``/media/docs/<pk>/images/<filename>``. Fetching
-      //     those directly from the static handler is fragile: in the
-      //     docker-compose deploy port 8000 isn't exposed to the browser
-      //     at all, and in cross-origin dev setups ``credentials`` +
-      //     ``CORS_ALLOW_ALL_ORIGINS`` produces an invalid wildcard +
-      //     credentials combo that the browser silently rejects. Either
-      //     way the export would drop the image with no visible error.
-      //   * ``/api/docs/<pk>/images/<filename>`` is the same path every
-      //     other XHR in the app already uses, so it's reliably proxied
-      //     in dev (Vite) and reachable in prod (the only port the
-      //     compose deploy exposes).
-      // Anything that doesn't match the document-image pattern (e.g. a
-      // future external URL) falls through to a plain same-origin fetch.
-      const apiBase = (import.meta.env.VITE_API_BASE as string | undefined) ?? ''
-      const docMediaPattern = /^(?:https?:\/\/[^/]+)?\/?media\/docs\/(\d+)\/images\/([^/?#]+)/
-      const m = src.match(docMediaPattern)
-      let fetchUrl: string
-      if (m) {
-        // Use a relative path so the request rides the same proxy as
-        // every other ``/api`` call. ``apiBase`` is intentionally NOT
-        // prepended — we want this same-origin so cookies attach and
-        // CORS doesn't enter the picture.
-        fetchUrl = `/api/docs/${m[1]}/images/${m[2]}`
+      // The editor already renders these images via ``<img src=…>`` and
+      // they appear correctly, so the URL we want is the exact one the
+      // ``<img>`` uses: absolute, going to the configured API base.
+      // Build candidate URLs in priority order and try each — whichever
+      // succeeds wins. This keeps the export working across every deploy
+      // topology this app supports (local runserver, docker compose,
+      // nginx in front, etc.) without depending on a specific proxy
+      // entry or a brand-new backend route being live.
+      const apiBase = (import.meta.env.VITE_API_BASE as string | undefined) ?? 'http://localhost:8000'
+
+      const candidates: string[] = []
+      if (src.startsWith('http')) {
+        candidates.push(src)
+        // Some upload paths bake in the api base; also try the bare path
+        // so the request rides the dev proxy / nginx instead of going
+        // cross-origin to a host that might not be reachable.
+        const absMatch = src.match(/^https?:\/\/[^/]+(\/.*)$/)
+        if (absMatch && absMatch[1] !== src) candidates.push(absMatch[1])
       } else {
-        // Strip the configured API base if the stored src is absolute
-        // (some upload flows bake it in), then leave the rest relative.
-        fetchUrl = src
-        if (apiBase && src.startsWith(apiBase)) {
-          fetchUrl = src.slice(apiBase.length)
-        } else {
-          const absMatch = src.match(/^https?:\/\/[^/]+(\/.*)$/)
-          if (absMatch) fetchUrl = absMatch[1]
+        const rooted = src.startsWith('/') ? src : `/${src}`
+        // Absolute first — that's the URL the editor's <img> tag uses,
+        // and the user has already confirmed it loads in the browser.
+        candidates.push(`${apiBase}${rooted}`)
+        candidates.push(rooted)
+      }
+
+      // ``credentials: 'omit'`` is the key fix. With ``include`` the
+      // browser refuses the response when the server sets
+      // ``Access-Control-Allow-Origin: *`` (which is what
+      // ``CORS_ALLOW_ALL_ORIGINS = True`` does for non-credentialed
+      // responses) — that's the wildcard-vs-credentials CORS rule.
+      // Omitting credentials sidesteps the issue: media is public, no
+      // auth needed, and the wildcard origin is then perfectly valid.
+      let resp: Response | null = null
+      for (const url of candidates) {
+        try {
+          const r = await fetch(url, { credentials: 'omit' })
+          if (r.ok) { resp = r; break }
+          console.warn(`[export] image fetch ${url} → HTTP ${r.status}`)
+        } catch (err) {
+          console.warn(`[export] image fetch ${url} threw`, err)
         }
       }
 
-      const resp = await fetch(fetchUrl, { credentials: 'include' })
-      if (!resp.ok) {
-        console.warn(`[export] image fetch failed: ${fetchUrl} → ${resp.status}`)
+      if (!resp) {
+        console.warn('[export] all image fetch candidates failed for', src)
         imageCache.set(src, null)
         return null
       }
