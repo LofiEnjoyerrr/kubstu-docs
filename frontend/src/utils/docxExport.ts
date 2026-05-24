@@ -432,13 +432,28 @@ function imageRunForNode(node: TiptapNode): ImageRun | null {
   const explicitW = node.attrs?.width as number | undefined
   const explicitH = node.attrs?.height as number | undefined
 
-  const MAX_W = 576
-  let w = explicitW ?? blob.width
-  let h = explicitH ?? blob.height
-  if (w > MAX_W) {
-    const scale = MAX_W / w
-    w = MAX_W
-    h = Math.round((explicitH ?? blob.height) * scale)
+  // The MAX_W safety net only applies when we DON'T have explicit
+  // dimensions on the image node. The DOCX importer reads <wp:extent>
+  // and stores the source pixel size on the node, so for imported
+  // images we want to honour that exactly — that's how a cover-page
+  // image stays full-page-sized instead of getting squished to the
+  // text-area width on round-trip. Editor-uploaded images don't go
+  // through the importer and may have no explicit size; those still
+  // get capped at the 6" text width so they don't overflow the page.
+  let w: number
+  let h: number
+  if (explicitW != null && explicitH != null) {
+    w = explicitW
+    h = explicitH
+  } else {
+    const MAX_W = 576
+    w = explicitW ?? blob.width
+    h = explicitH ?? blob.height
+    if (w > MAX_W) {
+      const scale = MAX_W / w
+      w = MAX_W
+      h = Math.round((explicitH ?? blob.height) * scale)
+    }
   }
 
   // If the importer tagged this image as floating (it came from a

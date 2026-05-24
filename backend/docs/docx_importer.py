@@ -856,7 +856,8 @@ class DocxConverter:
         Tiptap / Google Docs.
         """
         node_type, attrs = self._build_paragraph_attrs(p, in_list=in_list)
-        inline_items = self._build_inline(p)
+        paragraph_style = self._paragraph_style_for(p)
+        inline_items = self._build_inline(p, paragraph_style)
 
         blocks: list[dict] = []
         current_inline: list[dict] = []
@@ -899,8 +900,9 @@ class DocxConverter:
         text content intact.
         """
         node_type, attrs = self._build_paragraph_attrs(p, in_list=in_list)
+        paragraph_style = self._paragraph_style_for(p)
         inline_content = [
-            n for n in self._build_inline(p)
+            n for n in self._build_inline(p, paragraph_style)
             if n.get('type') not in self._BLOCK_INLINE_TYPES
         ]
 
@@ -911,15 +913,39 @@ class DocxConverter:
             node['content'] = inline_content
         return node
 
+    def _paragraph_style_for(self, p: ET.Element) -> 'StyleDef | None':
+        """
+        Resolve the paragraph's ``<w:pStyle>`` reference to a ``StyleDef``.
+        Used as a run-formatting fallback so that a run with no explicit
+        ``<w:sz>`` / ``<w:rFonts>`` still picks up the size + font Word's
+        TOC styles (``toc 1`` etc.) bake into the paragraph style itself.
+        Without this, top-level TOC entries fall through to docDefaults
+        (which is 11pt in this template) while sub-level entries that
+        happen to carry explicit run-level ``<w:sz>`` render correctly at
+        14pt — the resulting mixed sizes is the symptom the user saw.
+        """
+        ppr = p.find(qn('pPr'))
+        if ppr is None:
+            return None
+        pstyle = ppr.find(qn('pStyle'))
+        if pstyle is None:
+            return None
+        return self.styles.get(pstyle.get(qn('val')))
+
     # --------------------------------------------------------- inline content
 
-    def _build_inline(self, p: ET.Element) -> list[dict]:
-        """Walk a paragraph's children, producing Tiptap inline nodes."""
+    def _build_inline(self, p: ET.Element, paragraph_style: 'StyleDef | None' = None) -> list[dict]:
+        """Walk a paragraph's children, producing Tiptap inline nodes.
+
+        ``paragraph_style`` propagates down to ``_build_run`` so that runs
+        without explicit font / size fall back to the paragraph style
+        before docDefaults — see ``_paragraph_style_for`` for the why.
+        """
         out: list[dict] = []
         for child in p:
             tag = child.tag
             if tag == qn('r'):
-                out.extend(self._build_run(child))
+                out.extend(self._build_run(child, paragraph_style))
             elif tag == qn('hyperlink'):
                 href = child.get(qn('id', R_NS))
                 href_url = self.rels.get(href, '') if href else ''
@@ -930,7 +956,7 @@ class DocxConverter:
                     if href_url else None
                 )
                 for r in child.findall(qn('r')):
-                    runs = self._build_run(r)
+                    runs = self._build_run(r, paragraph_style)
                     if link_mark:
                         for tr in runs:
                             tr.setdefault('marks', []).append(link_mark)
@@ -954,7 +980,7 @@ class DocxConverter:
         # Tiptap dislikes runs without text — drop empties.
         return [n for n in out if n.get('text') or n.get('type') in {'image', 'hardBreak', 'pageBreak'}]
 
-    def _build_run(self, r: ET.Element) -> list[dict]:
+    def _build_run(self, r: ET.Element, paragraph_style: 'StyleDef | None' = None) -> list[dict]:
         rpr = r.find(qn('rPr'))
 
         # rStyle is the named-run-style reference; merge defaults in.
@@ -964,7 +990,7 @@ class DocxConverter:
             if rstyle is not None:
                 style_defaults = self.styles.get(rstyle.get(qn('val')))
 
-        marks = self._marks_for_rpr(rpr, style_defaults)
+        marks = self._marks_for_rpr(rpr, style_defaults, paragraph_style)
         out: list[dict] = []
 
         for child in r:
@@ -1015,6 +1041,7 @@ class DocxConverter:
         self,
         rpr: ET.Element | None,
         defaults: StyleDef | None,
+        paragraph_style: 'StyleDef | None' = None,
     ) -> list[dict]:
         marks: list[dict] = []
 
@@ -1072,6 +1099,18 @@ class DocxConverter:
             font_family = defaults.font_family
         if not font_size_pt and defaults:
             font_size_pt = defaults.font_size_pt
+
+        # Paragraph-style fallback. Word's ``toc 1`` (and many other named
+        # styles) hard-code their font + size at the paragraph level; runs
+        # inside a TOC entry typically carry no explicit ``<w:sz>``, so
+        # without this fallback the size resolved to docDefaults (11pt in
+        # this template) and the imported TOC came out with mixed sizes —
+        # top-level entries at 11pt, sub-level entries at 14pt because
+        # those latter ones happened to carry an explicit run-level size.
+        if not font_family and paragraph_style:
+            font_family = paragraph_style.font_family
+        if not font_size_pt and paragraph_style:
+            font_size_pt = paragraph_style.font_size_pt
 
         # Final fallback — docDefaults from styles.xml, then the shared
         # editor default. Apply explicitly so the editor renders the text
