@@ -120,7 +120,10 @@ REST_FRAMEWORK = {
     ],
     'DEFAULT_SCHEMA_CLASS': 'drf_spectacular.openapi.AutoSchema',
     'DEFAULT_THROTTLE_RATES': {
-        'users_login_scope': '30/5m',
+        # 5 login attempts per 15 minutes — on the 6th attempt inside the
+        # sliding window DRF returns 429, and the lockout persists until
+        # the oldest attempt in the window ages out (i.e. up to 15 min).
+        'users_login_scope': '5/15m',
         'users_register_scope': '20/1d',
         'users_email_verify': '50/1d',
         'users_password_reset_scope': '50/1d',

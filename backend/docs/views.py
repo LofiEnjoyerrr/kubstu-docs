@@ -1,4 +1,5 @@
 import json
+import mimetypes
 import os
 import uuid
 
@@ -6,6 +7,7 @@ from asgiref.sync import async_to_sync
 from channels.layers import get_channel_layer
 from django.conf import settings
 from django.core.files.storage import default_storage
+from django.http import HttpResponse
 from drf_spectacular.utils import extend_schema
 from rest_framework import status
 from rest_framework.exceptions import PermissionDenied, NotFound, ValidationError
@@ -278,6 +280,48 @@ class DocumentImageUploadAPIView(APIView):
         return Response({'url': url}, status=status.HTTP_201_CREATED)
 
 
+class DocumentImageDownloadAPIView(APIView):
+    """
+    Streams a single document image through the API. The DOCX exporter uses
+    this endpoint instead of fetching the raw ``/media/...`` URL because the
+    static media handler isn't reliable across deployments:
+
+      * In dev the SPA at ``localhost:5173`` would have to fetch
+        ``http://localhost:8000/media/...`` cross-origin, and
+        ``CORS_ALLOW_ALL_ORIGINS = True`` plus ``credentials: 'include'``
+        is a wildcard-origin / credentials incompatibility the browser
+        rejects — silently dropping the image from the export.
+      * In docker-compose the browser only sees port 5173 (Vite); port
+        8000 isn't exposed, so the absolute ``localhost:8000`` URL just
+        fails with a network error.
+
+    Routing the same bytes through ``/api/docs/<pk>/images/<filename>``
+    keeps the request on the proxy path that's *always* configured (it's
+    how every other XHR reaches the backend), so the fetch is reliably
+    same-origin and authenticated via the session cookie.
+    """
+
+    permission_classes = [AllowAny]
+
+    def get(self, request, pk, filename):
+        document = _get_document_or_404(pk)
+        _require_read_access(document, request.user)
+
+        # Defense-in-depth — block path-traversal attempts. Real filenames
+        # produced by the importer / uploader are uuid hex + extension.
+        if '/' in filename or '\\' in filename or '..' in filename:
+            raise PermissionDenied('Некорректное имя файла')
+
+        relpath = f'docs/{pk}/images/{filename}'
+        if not default_storage.exists(relpath):
+            raise NotFound('Изображение не найдено')
+
+        with default_storage.open(relpath, 'rb') as fh:
+            data = fh.read()
+        mime = mimetypes.guess_type(filename)[0] or 'application/octet-stream'
+        return HttpResponse(data, content_type=mime)
+
+
 class DocumentDocxImportAPIView(APIView):
     """
     Server-side DOCX import. Parses the uploaded file with our custom
@@ -325,6 +369,19 @@ class DocumentDocxImportAPIView(APIView):
         footer_doc = result.get('footer_content')
         has_pagination = bool(result.get('has_pagination'))
 
+        # Comments left by users in our editor are anchored by Tiptap doc
+        # positions (``from_pos`` / ``to_pos``). A DOCX import rewrites the
+        # entire document body, so every existing comment now points at a
+        # range that no longer matches its quote — at best they jump to
+        # the wrong span, at worst the positions exceed the new doc size.
+        # Wipe them before the content swap and remember their IDs so we
+        # can tell any open clients to drop them from the comment panel.
+        stale_comment_ids = list(
+            Comment.objects.filter(document=document).values_list('id', flat=True),
+        )
+        if stale_comment_ids:
+            Comment.objects.filter(document=document).delete()
+
         # Persist atomically. We hand-roll the save instead of going through
         # the serializer so we can update many fields in one shot and bump
         # `version` like the WS path does.
@@ -370,6 +427,11 @@ class DocumentDocxImportAPIView(APIView):
             'show_page_numbers': document.show_page_numbers,
             'page_number_start': document.page_number_start,
         })
+        # Replay the comment removals over WS so every connected client
+        # clears them from its CommentPanel. Reuses the existing per-comment
+        # broadcast type — no new event needed.
+        for cid in stale_comment_ids:
+            _broadcast_to_doc(pk, {'type': 'broadcast_comment_delete', 'comment_id': cid})
 
         return Response(GetDocumentSerializer(document).data, status=status.HTTP_200_OK)
 

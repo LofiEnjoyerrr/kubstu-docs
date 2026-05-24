@@ -24,7 +24,6 @@ import {
   type ParagraphChild,
 } from 'docx'
 import { saveAs } from 'file-saver'
-import { resolveMediaUrl } from './media'
 import {
   DEFAULT_FONT_FAMILY,
   DEFAULT_FONT_SIZE_HALF_POINTS,
@@ -123,40 +122,28 @@ function paragraphAlign(node: TiptapNode): (typeof AlignmentType)[keyof typeof A
   return ta ? ALIGN_MAP[ta] : undefined
 }
 
-function lineSpacing(node: TiptapNode): { line?: number; lineRule?: 'exact' } | undefined {
-  // We only emit a ``<w:spacing>`` for paragraphs whose Tiptap node carries
-  // an explicit ``lineHeight`` attribute. The Tiptap attribute is a unitless
-  // CSS multiplier (e.g. ``"1.5"``), interpreted against the run's font size.
-  // To preserve that intent in Word we convert it to an *exact* twips value
-  // — ``lineRule="auto"`` would let Word fall back to natural metrics for
-  // single-spaced paragraphs (defeating the purpose). Paragraphs without
-  // ``lineHeight`` get no line spec, which lets Word use the font's natural
-  // line height — matching the editor's ``line-height: normal`` default.
+function lineSpacing(node: TiptapNode): { line?: number; lineRule?: 'auto' } | undefined {
+  // Tiptap's ``lineHeight`` attribute is a unitless CSS multiplier
+  // (e.g. ``"1.5"``). Word's ``<w:spacing w:line w:lineRule="auto"/>``
+  // expresses the SAME semantic: ``line`` is in 240ths of single
+  // spacing, so 360 = 1.5, 480 = double, 276 = 1.15. Emitting the
+  // multiplier this way is what makes the round-trip stable — the
+  // importer reads ``line=360 lineRule=auto`` and converts it back to
+  // ``1.5``.
+  //
+  // An earlier version computed an absolute twips value and emitted
+  // ``lineRule="exact"`` instead. Word then displayed the line height
+  // as "Exactly 21pt" rather than "1.5 lines", and a re-import would
+  // turn the multiplier into a font-size-relative ratio that drifted
+  // away from the original whenever a run had a non-default size.
+  // Paragraphs without ``lineHeight`` get no line spec at all so Word
+  // falls back to its docDefaults (which is what keeps text density in
+  // sync with the editor's CSS default).
   const lh = node.attrs?.lineHeight as string | undefined
   if (!lh) return undefined
   const n = parseFloat(lh)
-  if (isNaN(n)) return undefined
-  const fontSizePt = readRunFontSizePt(node) ?? 14
-  const twips = Math.round(n * fontSizePt * 20)
-  return { line: twips, lineRule: 'exact' }
-}
-
-function readRunFontSizePt(node: TiptapNode): number | undefined {
-  // Find the first text run's ``fontSize`` mark to anchor the line-height
-  // multiplier against. Without this we'd assume 14pt for every paragraph,
-  // so a paragraph whose runs are explicitly 11pt would round-trip with
-  // a line that's ~27% too tall.
-  for (const child of node.content ?? []) {
-    if (child.type !== 'text') continue
-    const ts = child.marks?.find(m => m.type === 'textStyle')
-    const size = (ts?.attrs as Record<string, string> | undefined)?.fontSize
-    if (!size) continue
-    const m = size.match(/^([\d.]+)/)
-    if (!m) continue
-    const n = parseFloat(m[1])
-    if (!isNaN(n)) return n
-  }
-  return undefined
+  if (isNaN(n) || n <= 0) return undefined
+  return { line: Math.round(n * 240), lineRule: 'auto' }
 }
 
 function paragraphSpacing(node: TiptapNode): any {
@@ -210,13 +197,47 @@ async function loadImage(src: string): Promise<ImageBlob | null> {
       for (let i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i)
       arrayBuffer = bytes.buffer
     } else {
-      // DOCX-imported images are stored as ``/media/...`` relative paths.
-      // In dev that resolves to ``http://localhost:5173`` (Vite) which has
-      // nothing to serve. ``resolveMediaUrl`` prepends the API base so the
-      // fetch hits Django regardless of which dev port the page is on.
-      const fetchUrl = resolveMediaUrl(src) ?? src
+      // Route image fetches through the API endpoint instead of the bare
+      // ``/media/...`` static handler. Why this matters for export:
+      //   * The DOCX importer and the image-upload endpoint both store
+      //     images under ``/media/docs/<pk>/images/<filename>``. Fetching
+      //     those directly from the static handler is fragile: in the
+      //     docker-compose deploy port 8000 isn't exposed to the browser
+      //     at all, and in cross-origin dev setups ``credentials`` +
+      //     ``CORS_ALLOW_ALL_ORIGINS`` produces an invalid wildcard +
+      //     credentials combo that the browser silently rejects. Either
+      //     way the export would drop the image with no visible error.
+      //   * ``/api/docs/<pk>/images/<filename>`` is the same path every
+      //     other XHR in the app already uses, so it's reliably proxied
+      //     in dev (Vite) and reachable in prod (the only port the
+      //     compose deploy exposes).
+      // Anything that doesn't match the document-image pattern (e.g. a
+      // future external URL) falls through to a plain same-origin fetch.
+      const apiBase = (import.meta.env.VITE_API_BASE as string | undefined) ?? ''
+      const docMediaPattern = /^(?:https?:\/\/[^/]+)?\/?media\/docs\/(\d+)\/images\/([^/?#]+)/
+      const m = src.match(docMediaPattern)
+      let fetchUrl: string
+      if (m) {
+        // Use a relative path so the request rides the same proxy as
+        // every other ``/api`` call. ``apiBase`` is intentionally NOT
+        // prepended — we want this same-origin so cookies attach and
+        // CORS doesn't enter the picture.
+        fetchUrl = `/api/docs/${m[1]}/images/${m[2]}`
+      } else {
+        // Strip the configured API base if the stored src is absolute
+        // (some upload flows bake it in), then leave the rest relative.
+        fetchUrl = src
+        if (apiBase && src.startsWith(apiBase)) {
+          fetchUrl = src.slice(apiBase.length)
+        } else {
+          const absMatch = src.match(/^https?:\/\/[^/]+(\/.*)$/)
+          if (absMatch) fetchUrl = absMatch[1]
+        }
+      }
+
       const resp = await fetch(fetchUrl, { credentials: 'include' })
       if (!resp.ok) {
+        console.warn(`[export] image fetch failed: ${fetchUrl} → ${resp.status}`)
         imageCache.set(src, null)
         return null
       }
@@ -268,6 +289,23 @@ function collectSources(node: TiptapNode, out: Set<string>): void {
   if (node.content) node.content.forEach(c => collectSources(c, out))
 }
 
+/**
+ * Map a MIME type to the ``type`` discriminator the docx library accepts.
+ * docx only supports a fixed set of values (``"png" | "jpg" | "gif" |
+ * "bmp"`` for raster, ``"svg"`` for vector). A naive
+ * ``mime.split('/')[1]`` returns ``"jpeg"`` for JPEGs and breaks the
+ * runtime check on the docx side, which then silently drops the image
+ * from the output — exactly the regression we hit on JPEG-bearing decks.
+ */
+function mimeToDocxType(mime: string): 'png' | 'jpg' | 'gif' | 'bmp' | 'svg' {
+  const m = mime.toLowerCase()
+  if (m.includes('jpeg') || m.includes('jpg')) return 'jpg'
+  if (m.includes('gif')) return 'gif'
+  if (m.includes('bmp')) return 'bmp'
+  if (m.includes('svg')) return 'svg'
+  return 'png'
+}
+
 function imageRunForNode(node: TiptapNode): ImageRun | null {
   const src = node.attrs?.src as string | undefined
   if (!src) return null
@@ -288,9 +326,9 @@ function imageRunForNode(node: TiptapNode): ImageRun | null {
 
   return new ImageRun({
     data: blob.data as any,
-    type: (blob.mime.split('/')[1] || 'png') as any,
+    type: mimeToDocxType(blob.mime),
     transformation: { width: w, height: h },
-  })
+  } as any)
 }
 
 // ─── inline builders ──────────────────────────────────────────────────────────

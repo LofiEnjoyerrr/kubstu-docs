@@ -743,17 +743,22 @@ class DocxConverter:
                         n = 0
                     if n:
                         if rule in (None, 'auto'):
-                            # ``auto`` means Word uses the larger of the
-                            # suggested value or the font's natural line
-                            # height. CSS has no equivalent — a fixed
-                            # ``line-height`` multiplier resolves to a
-                            # different pixel height than Word's natural
-                            # metrics, so editor pages drift out of sync
-                            # with the exported DOCX. Leave it unset so
-                            # the editor falls back to its CSS default of
-                            # ``line-height: normal`` (the browser's
-                            # natural metrics), which matches Word.
-                            line_height = None
+                            # ``auto`` line spacing is encoded in 240ths of
+                            # single spacing: 240 = single (1.0), 360 = 1.5,
+                            # 480 = double, 276 = Word's 1.15 default. We
+                            # previously dropped this value because there's
+                            # no CSS analogue to Word's "natural metrics"
+                            # and a multiplier slightly shifts page breaks
+                            # vs. the source DOCX. That trade-off was wrong:
+                            # losing the user's explicit 1.5/double spacing
+                            # produces a visibly wrong document, while the
+                            # page-drift is small. So we now emit the
+                            # multiplier for every non-single value, and
+                            # leave 240 (= 1.0 = the CSS default) unset.
+                            if n != 240:
+                                line_height = f'{round(n / 240.0, 3)}'
+                            else:
+                                line_height = None
                         else:
                             # ``exact`` / ``atLeast`` — value is in twips,
                             # not 240ths. Convert to a multiplier against
@@ -879,6 +884,20 @@ class DocxConverter:
                     out.extend(runs)
             elif tag == qn('proofErr') or tag == qn('bookmarkStart') or tag == qn('bookmarkEnd'):
                 continue
+            elif tag in (
+                qn('commentRangeStart'),
+                qn('commentRangeEnd'),
+                qn('commentReference'),
+            ):
+                # Word comments are dropped on import. The editor has its
+                # own comment system (``CommentHighlights``) keyed by doc
+                # positions, so blindly converting Word-side annotations
+                # would attach them to the wrong ranges after the
+                # paragraph-and-run flattening done above. Strip every
+                # marker the comment subsystem uses (range start/end on
+                # paragraph children, plus the reference markers inside
+                # runs — see ``_build_run``) so nothing leaks through.
+                continue
         # Tiptap dislikes runs without text — drop empties.
         return [n for n in out if n.get('text') or n.get('type') in {'image', 'hardBreak', 'pageBreak'}]
 
@@ -934,6 +953,9 @@ class DocxConverter:
                 img = self._image_from_pict(child)
                 if img:
                     out.append(img)
+            elif tag == qn('commentReference'):
+                # Comments are stripped on import — see ``_build_inline``.
+                continue
         return out
 
     def _marks_for_rpr(
