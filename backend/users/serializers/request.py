@@ -153,10 +153,20 @@ class UserUpdateSerializer(serializers.ModelSerializer):
 
     def validate_avatar(self, value):
         import io
-        from PIL import Image
+        from PIL import Image, ImageOps
         from django.core.files.uploadedfile import InMemoryUploadedFile
 
         img = Image.open(value)
+
+        # Honor the EXIF orientation tag so phone-camera uploads aren't
+        # stored sideways. ``exif_transpose`` is a no-op when the tag is
+        # absent or already set to "normal".
+        img = ImageOps.exif_transpose(img)
+
+        # Cap the largest side at 2000px (preserves aspect ratio; never
+        # upscales). Doing this before the mode/alpha work keeps the
+        # subsequent conversions cheap.
+        img.thumbnail((2000, 2000))
 
         # Palette images may carry transparency — convert to RGBA first.
         if img.mode == 'P':

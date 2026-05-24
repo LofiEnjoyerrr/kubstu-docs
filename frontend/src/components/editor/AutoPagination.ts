@@ -337,11 +337,30 @@ export const AutoPagination = Extension.create<AutoPaginationOptions>({
 
               if (elRect.height === 0) return
 
-              const blockBottom = elRect.bottom
+              // Count auto-break widgets currently rendered INSIDE this
+              // block. Each contributes ``BREAK_VISUAL_HEIGHT`` to the
+              // measured height, so we subtract them to learn what the
+              // block would measure if its widgets were removed.
+              //
+              // Without this subtraction the algorithm gets stuck: when
+              // the last word of a page wraps to the next page, a widget
+              // gets inserted in front of the wrapping line. That widget
+              // is itself what pushes ``blockBottom`` past
+              // ``pageBottomNow``. So when the user shortens the wrapped
+              // word back down to where it would fit on the previous
+              // page, the visual bottom stays inflated by the widget and
+              // we never drop it — the word stays trapped on page 2.
+              // Comparing against the natural bottom instead lets the
+              // recompute notice "this block would fit without its
+              // widget" and remove the widget on the next render.
+              const widgetsInside = el.querySelectorAll('.auto-page-break').length
+              const widgetsContribution = widgetsInside * BREAK_VISUAL_HEIGHT
+              const naturalBottom = elRect.bottom - widgetsContribution
               let pageBottomNow = currentPageTop + pageHeight
 
-              // Whole block fits on the current page?
-              if (blockBottom <= pageBottomNow + 0.5) {
+              // Whole block fits on the current page once its existing
+              // widgets are removed?
+              if (naturalBottom <= pageBottomNow + 0.5) {
                 return
               }
 
@@ -367,7 +386,11 @@ export const AutoPagination = Extension.create<AutoPaginationOptions>({
               const probeX = elRect.left + 1
               let safety = 0
               let pushedAny = false
-              while (blockBottom > pageBottomNow + 0.5 && safety < 200) {
+              // Loop against ``naturalBottom`` for the same reason as
+              // above — using ``elRect.bottom`` here would over-push
+              // breaks in multi-page blocks once existing widgets had
+              // inflated the measured height.
+              while (naturalBottom > pageBottomNow + 0.5 && safety < 200) {
                 safety++
                 const pos = posAtViewportY(view, pageBottomNow, probeX, offset, node.nodeSize)
                 if (pos === null) break
