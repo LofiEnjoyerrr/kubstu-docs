@@ -72,6 +72,16 @@ const BREAK_VISUAL_HEIGHT = 40
  * page break that falls below the scroll fold. When that happens we fall
  * back to a binary search over `coordsAtPos`, which measures actual DOM
  * rects and works for any position regardless of scroll.
+ *
+ * The returned position is ALWAYS snapped to the start of its visual line.
+ * Without this snap the break widget can land mid-word: ``posAtCoords``
+ * is happy to return a position between two characters of the same word
+ * (sub-pixel rounding plus the way browsers expose the leftmost text rect
+ * on justified lines), and a ``display: block`` widget inserted there
+ * forces the browser to render half the word on the current page and the
+ * other half on the next. Snapping back to the line start guarantees the
+ * widget always sits between two visual lines, so the whole straddling
+ * line moves to the next page as a unit.
  */
 function posAtViewportY(
   view: EditorView,
@@ -82,36 +92,122 @@ function posAtViewportY(
 ): number | null {
   const screenH = window.innerHeight || document.documentElement.clientHeight
 
+  let candidate: number | null = null
+
   // Fast path: target is inside the visible viewport.
   if (targetY >= 0 && targetY <= screenH) {
     const hit = view.posAtCoords({ left: probeX, top: targetY })
-    return hit?.pos ?? null
+    candidate = hit?.pos ?? null
   }
 
-  // Off-screen: binary-search using coordsAtPos, which works for any doc
-  // position even when the element is outside the viewport.
-  const lo0 = nodeStart + 1
-  const hi0 = nodeStart + nodeSize - 1
-  if (lo0 >= hi0) return null
+  if (candidate === null) {
+    // Off-screen (or posAtCoords couldn't resolve): binary-search using
+    // coordsAtPos, which works for any doc position even when the
+    // element is outside the viewport.
+    const lo0 = nodeStart + 1
+    const hi0 = nodeStart + nodeSize - 1
+    if (lo0 >= hi0) return null
 
-  // Find the smallest position where coordsAtPos(pos).top >= targetY.
-  let lo = lo0
-  let hi = hi0
-  for (let iter = 0; iter < 40; iter++) {
+    // Find the smallest position where coordsAtPos(pos).top >= targetY.
+    let lo = lo0
+    let hi = hi0
+    for (let iter = 0; iter < 40; iter++) {
+      const mid = (lo + hi) >> 1
+      if (mid <= lo) break
+      let top: number
+      try {
+        top = view.coordsAtPos(mid).top
+      } catch {
+        break
+      }
+      if (top < targetY) lo = mid
+      else hi = mid
+    }
+
+    if (hi <= lo0 || hi >= hi0) return null
+    candidate = hi
+  }
+
+  return snapToLineStart(view, candidate, nodeStart)
+}
+
+/**
+ * Walk backwards from ``pos`` to the smallest position within the same
+ * block whose ``coordsAtPos(...).top`` matches the input position's top —
+ * i.e. the first character of the visual line containing ``pos``. This
+ * keeps the auto-pagination widget from ever landing inside a word.
+ *
+ * Then ensure the result is a real word boundary in the underlying text.
+ * The line-start snap alone has a feedback loop: when the widget is
+ * already at a mid-word position (which can happen during fast typing
+ * before the recompute catches up, or right after the user extends the
+ * last word on a page so it overflows), the visual line *after* that
+ * widget starts mid-word, and a fresh snap to its start lands on the
+ * exact same bad position. The widget never moves and the user sees a
+ * word split across the page boundary indefinitely. Walking backwards
+ * from the line start to the next whitespace breaks the loop — the
+ * widget snaps to the start of the wrapping word, the word stays
+ * intact on one page, and the layout settles.
+ */
+function snapToLineStart(view: EditorView, pos: number, nodeStart: number): number {
+  let targetTop: number
+  try {
+    targetTop = view.coordsAtPos(pos).top
+  } catch {
+    return pos
+  }
+
+  // Tolerate sub-pixel rounding when comparing line tops — Chrome
+  // occasionally reports the same visual line as ``250.4`` for one
+  // character and ``250.6`` for the next.
+  const EPSILON = 1.5
+
+  let lo = nodeStart + 1
+  let hi = pos
+  while (lo < hi) {
     const mid = (lo + hi) >> 1
-    if (mid <= lo) break
     let top: number
     try {
       top = view.coordsAtPos(mid).top
     } catch {
-      break
+      lo = mid + 1
+      continue
     }
-    if (top < targetY) lo = mid
+    if (top < targetTop - EPSILON) lo = mid + 1
     else hi = mid
   }
 
-  if (hi <= lo0 || hi >= hi0) return null
-  return hi
+  return snapToWordBoundary(view, lo, nodeStart)
+}
+
+/**
+ * Walk backwards from ``pos`` until we land immediately after whitespace
+ * (or hit the start of the block). Capped at ``MAX_LOOKBACK`` characters
+ * so that a single very long unbreakable token can't make us scan the
+ * whole doc — in that pathological case we just return ``pos`` and let
+ * the break land wherever it does.
+ */
+function snapToWordBoundary(view: EditorView, pos: number, nodeStart: number): number {
+  const MAX_LOOKBACK = 256
+  const doc = view.state.doc
+  const floor = Math.max(nodeStart + 1, pos - MAX_LOOKBACK)
+
+  let p = pos
+  while (p > floor) {
+    let ch: string
+    try {
+      ch = doc.textBetween(p - 1, p, '\n', '\n')
+    } catch {
+      break
+    }
+    // ``ch`` is empty when ``p - 1`` sits on a node boundary (e.g. a
+    // hardBreak or the start of an inline node). Treat that as a word
+    // boundary too — anything before it is necessarily a separate
+    // "word" in the layout sense.
+    if (!ch || /\s/.test(ch)) return p
+    p--
+  }
+  return pos
 }
 
 function buildBreakEl(): HTMLElement {
