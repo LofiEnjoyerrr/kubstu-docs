@@ -84,11 +84,52 @@
           </section>
 
           <section v-if="docs.openedDocuments.length">
-            <h2 class="text-sm font-semibold text-slate-500 uppercase tracking-wider mb-4">
-              Доступные мне ({{ docs.openedDocuments.length }})
-            </h2>
-            <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
-              <DocumentCard v-for="doc in docs.openedDocuments" :key="doc.id" :doc="doc" />
+            <div class="flex flex-col gap-3 mb-4">
+              <h2 class="text-sm font-semibold text-slate-500 uppercase tracking-wider">
+                Доступные мне ({{ openedDocumentsCountLabel }})
+              </h2>
+              <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-2">
+                <input
+                  v-model="openedAuthorFilter"
+                  type="search"
+                  class="input"
+                  placeholder="Автор"
+                  aria-label="Фильтр по автору"
+                />
+                <input
+                  v-model="openedTitleFilter"
+                  type="search"
+                  class="input"
+                  placeholder="Название"
+                  aria-label="Фильтр по названию"
+                />
+                <input
+                  v-model="openedCreatedFrom"
+                  type="date"
+                  class="input"
+                  aria-label="Дата создания от"
+                />
+                <input
+                  v-model="openedCreatedTo"
+                  type="date"
+                  class="input"
+                  aria-label="Дата создания до"
+                />
+                <button
+                  type="button"
+                  class="btn-secondary"
+                  :disabled="!hasOpenedFilters"
+                  @click="clearOpenedFilters"
+                >
+                  Сбросить
+                </button>
+              </div>
+            </div>
+            <div v-if="!filteredOpenedDocuments.length" class="card p-10 text-center text-slate-400">
+              <p class="text-sm">Документы по заданным фильтрам не найдены</p>
+            </div>
+            <div v-else class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
+              <DocumentCard v-for="doc in filteredOpenedDocuments" :key="doc.id" :doc="doc" />
             </div>
           </section>
         </template>
@@ -129,7 +170,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, onMounted } from 'vue'
+import { computed, ref, onMounted } from 'vue'
 import { useRouter } from 'vue-router'
 import { useAuthStore } from '../stores/auth'
 import { useDocumentsStore } from '../stores/documents'
@@ -151,6 +192,43 @@ const searchQuery = ref('')
 const searchResults = ref<Document[]>([])
 const isSearching = ref(false)
 let searchTimer: ReturnType<typeof setTimeout> | null = null
+
+const openedAuthorFilter = ref('')
+const openedTitleFilter = ref('')
+const openedCreatedFrom = ref('')
+const openedCreatedTo = ref('')
+
+const hasOpenedFilters = computed(() =>
+  Boolean(
+    openedAuthorFilter.value.trim()
+    || openedTitleFilter.value.trim()
+    || openedCreatedFrom.value
+    || openedCreatedTo.value,
+  ),
+)
+
+const filteredOpenedDocuments = computed(() => {
+  const author = normalizeFilter(openedAuthorFilter.value)
+  const title = normalizeFilter(openedTitleFilter.value)
+  const createdFrom = parseDateStart(openedCreatedFrom.value)
+  const createdTo = parseDateEnd(openedCreatedTo.value)
+
+  return docs.openedDocuments.filter((doc) => {
+    const createdAt = new Date(doc.dt_created).getTime()
+
+    return (
+      (!author || normalizeFilter(doc.owner).includes(author))
+      && (!title || normalizeFilter(doc.title).includes(title))
+      && (createdFrom === null || createdAt >= createdFrom)
+      && (createdTo === null || createdAt <= createdTo)
+    )
+  })
+})
+
+const openedDocumentsCountLabel = computed(() => {
+  if (!hasOpenedFilters.value) return String(docs.openedDocuments.length)
+  return `${filteredOpenedDocuments.value.length} из ${docs.openedDocuments.length}`
+})
 
 onMounted(async () => {
   try {
@@ -178,6 +256,27 @@ function onSearchInput() {
       isSearching.value = false
     }
   }, 400)
+}
+
+function normalizeFilter(value: string) {
+  return value.trim().toLocaleLowerCase('ru-RU')
+}
+
+function parseDateStart(value: string) {
+  if (!value) return null
+  return new Date(`${value}T00:00:00`).getTime()
+}
+
+function parseDateEnd(value: string) {
+  if (!value) return null
+  return new Date(`${value}T23:59:59.999`).getTime()
+}
+
+function clearOpenedFilters() {
+  openedAuthorFilter.value = ''
+  openedTitleFilter.value = ''
+  openedCreatedFrom.value = ''
+  openedCreatedTo.value = ''
 }
 
 async function createDocument() {

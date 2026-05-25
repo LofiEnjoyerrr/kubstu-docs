@@ -30,7 +30,7 @@ export type PushState =
 
 const SERVICE_WORKER_PATH = '/sw.js'
 
-function urlBase64ToUint8Array(b64: string): Uint8Array {
+function urlBase64ToUint8Array(b64: string): ArrayBuffer {
   // The browser's pushManager.subscribe() wants a raw byte array of the
   // P-256 public key. The backend sends URL-safe base64 without padding.
   const padding = '='.repeat((4 - (b64.length % 4)) % 4)
@@ -38,7 +38,7 @@ function urlBase64ToUint8Array(b64: string): Uint8Array {
   const raw = atob(normalized)
   const out = new Uint8Array(raw.length)
   for (let i = 0; i < raw.length; i++) out[i] = raw.charCodeAt(i)
-  return out
+  return out.buffer.slice(out.byteOffset, out.byteOffset + out.byteLength)
 }
 
 function isSupported(): boolean {
