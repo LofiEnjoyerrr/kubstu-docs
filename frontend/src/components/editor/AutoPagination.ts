@@ -49,19 +49,18 @@ declare module '@tiptap/core' {
 }
 
 /**
- * Visual height consumed by a single auto-break widget.
- *
- * Breaks render as a clearly visible "between-pages" gap so the user can
- * tell where one page ends and the next begins. The gap takes real layout
- * space, so the plugin advances ``currentPageTop`` by this many pixels
- * past each break it inserts — that's how the next page's first line ends
- * up at the right Y coordinate.
+ * Visual height consumed by a single auto-break widget — kept as a
+ * documentation anchor for the CSS coupling. The current measurement
+ * algorithm hides the widgets before measuring (see ``recomputeInner``),
+ * so this number doesn't appear in any arithmetic; it just records what
+ * the CSS reserves for the gap between pages.
  *
  * KEEP IN SYNC with the ``height`` of ``.tiptap-editor .page-break`` in
  * TiptapEditor.vue. Editor and DOCX still match text-per-page because the
  * exporter strips break widgets and re-injects them as hard page breaks
  * at the same doc positions — Word never sees the visual gap.
  */
+// eslint-disable-next-line @typescript-eslint/no-unused-vars
 const BREAK_VISUAL_HEIGHT = 40
 
 /**
@@ -310,136 +309,139 @@ export const AutoPagination = Extension.create<AutoPaginationOptions>({
             // Editor not laid out yet (hidden / mid-mount); retry later.
             if (editorRect.height === 0 || editorRect.width === 0) return
 
-            const allChildren = Array.from(root.children) as HTMLElement[]
-            const blockEls = allChildren.filter(
-              (c) => !c.hasAttribute('data-auto-page-break'),
+            // Hide every currently-rendered auto-break widget BEFORE we
+            // measure. This is the heart of the algorithm: without it,
+            // each widget inflates the bottom of the block it lives in
+            // (both by its own ``BREAK_VISUAL_HEIGHT`` and — more
+            // importantly — by forcing the wrapping word onto a fresh
+            // line below the widget). Subtracting only the widget height
+            // (the old ``widgetsContribution`` heuristic) under-corrected
+            // by exactly one line, so once a word wrapped to page 2 the
+            // measured bottom stayed above the page boundary even after
+            // the user deleted the characters that caused the wrap — and
+            // the widget never went away.
+            //
+            // Hiding the widgets gives us the true "as if no auto-breaks
+            // existed" layout, so ``elRect.bottom`` is the natural
+            // bottom and the comparison against ``pageBottomNow`` is
+            // exact. Browsers compute style changes synchronously when
+            // a measurement is taken right after, so the swap happens
+            // without a paint in between — no flicker.
+            const widgetEls = Array.from(
+              root.querySelectorAll<HTMLElement>('.auto-page-break'),
             )
-
-            const positions: number[] = []
-            // Viewport Y where the current page starts. Advances past each
-            // manual break and each auto break we insert.
-            let currentPageTop = editorRect.top
-            let blockIdx = 0
-
-            state.doc.forEach((node, offset) => {
-              const el = blockEls[blockIdx]
-              blockIdx += 1
-              if (!el) return
-
-              const elRect = el.getBoundingClientRect()
-
-              // Manual page/section breaks end the current page — the
-              // next block starts a fresh page right after them.
-              if (node.type.name === 'pageBreak' || node.type.name === 'sectionBreak') {
-                currentPageTop = elRect.bottom
-                return
-              }
-
-              if (elRect.height === 0) return
-
-              // Count auto-break widgets currently rendered INSIDE this
-              // block. Each contributes ``BREAK_VISUAL_HEIGHT`` to the
-              // measured height, so we subtract them to learn what the
-              // block would measure if its widgets were removed.
-              //
-              // Without this subtraction the algorithm gets stuck: when
-              // the last word of a page wraps to the next page, a widget
-              // gets inserted in front of the wrapping line. That widget
-              // is itself what pushes ``blockBottom`` past
-              // ``pageBottomNow``. So when the user shortens the wrapped
-              // word back down to where it would fit on the previous
-              // page, the visual bottom stays inflated by the widget and
-              // we never drop it — the word stays trapped on page 2.
-              // Comparing against the natural bottom instead lets the
-              // recompute notice "this block would fit without its
-              // widget" and remove the widget on the next render.
-              const widgetsInside = el.querySelectorAll('.auto-page-break').length
-              const widgetsContribution = widgetsInside * BREAK_VISUAL_HEIGHT
-              const naturalBottom = elRect.bottom - widgetsContribution
-              let pageBottomNow = currentPageTop + pageHeight
-
-              // Whole block fits on the current page once its existing
-              // widgets are removed?
-              if (naturalBottom <= pageBottomNow + 0.5) {
-                return
-              }
-
-              // Block overflows the current page. Probe for an
-              // intra-block break first — that's what Word does by
-              // default and what the user expects: fill the current
-              // page with as many of the block's lines as fit, then
-              // wrap the rest onto the next page. The previous version
-              // pushed a break BEFORE the block whenever there was any
-              // content above it, which left the bottom of the current
-              // page empty whenever a multi-line paragraph couldn't fit
-              // in the remaining gap.
-              //
-              // Probe at the LEFT edge of the block, not the middle.
-              // ``posAtCoords({left: middleX, top: pageBottomY})`` would
-              // return a doc position in the middle of whichever line
-              // straddles ``pageBottomY`` — inserting a block widget
-              // there forces a visual line break mid-word. Probing at
-              // the left edge instead returns the START of the
-              // straddling line, so the whole line moves to the next
-              // page and the previous line fills out to the right
-              // margin like Word and Google Docs do.
-              const probeX = elRect.left + 1
-              let safety = 0
-              let pushedAny = false
-              // Loop against ``naturalBottom`` for the same reason as
-              // above — using ``elRect.bottom`` here would over-push
-              // breaks in multi-page blocks once existing widgets had
-              // inflated the measured height.
-              while (naturalBottom > pageBottomNow + 0.5 && safety < 200) {
-                safety++
-                const pos = posAtViewportY(view, pageBottomNow, probeX, offset, node.nodeSize)
-                if (pos === null) break
-
-                if (pos <= offset) {
-                  // The probe landed at or before the block's first
-                  // position — there's no line of THIS block we can
-                  // keep on the current page. That happens for atomic
-                  // blocks (images, manual breaks) and for paragraphs
-                  // whose first line already starts below the page
-                  // boundary. Fall back to a "page break before block"
-                  // ONLY on the first iteration — once we have already
-                  // pushed an intra-break we mustn't push another one
-                  // at the same place.
-                  if (!pushedAny && elRect.top > currentPageTop + 0.5) {
-                    positions.push(offset)
-                    pushedAny = true
-                    // Block's CURRENT top is what the next page top
-                    // measures to in the pre-break layout; after the
-                    // break shifts the block down, both sides of the
-                    // future-vs-current comparison shift equally so
-                    // using the current Y here is correct.
-                    currentPageTop = elRect.top
-                    pageBottomNow = currentPageTop + pageHeight
-                    continue
-                  }
-                  break
-                }
-
-                // The position must sit AFTER any previously pushed
-                // break and BEFORE the block's end.
-                if (positions.length > 0 && pos <= positions[positions.length - 1]) break
-                if (pos >= offset + node.nodeSize) break
-
-                positions.push(pos)
-                pushedAny = true
-                // Advance to the *current* Y of the content that will sit
-                // at the top of the next page. We are measuring the
-                // pre-break layout — once the break decoration lands,
-                // every block past ``pageBottomNow`` shifts down by
-                // ``BREAK_VISUAL_HEIGHT``. So the doc position that will
-                // be at the next page's top in the future layout is the
-                // one currently at viewport Y = pageBottomNow.
-                currentPageTop = pageBottomNow
-                pageBottomNow = currentPageTop + pageHeight
-              }
+            const savedDisplay = widgetEls.map((w) => w.style.display)
+            widgetEls.forEach((w) => {
+              w.style.display = 'none'
             })
 
-            dispatchIfChanged(positions)
+            try {
+              // Re-read editor rect AFTER hiding widgets: with the
+              // widgets removed from the flow, the editor's height
+              // shrinks, but its TOP is unchanged. We still use the
+              // original top as the page-1 origin — that's stable.
+              const allChildren = Array.from(root.children) as HTMLElement[]
+              const blockEls = allChildren.filter(
+                (c) => !c.hasAttribute('data-auto-page-break'),
+              )
+
+              const positions: number[] = []
+              // Viewport Y where the current page starts. Advances past
+              // each manual break and each auto break we insert. With
+              // widgets hidden, this stays aligned with the natural
+              // layout's logical "page N top".
+              let currentPageTop = editorRect.top
+              let blockIdx = 0
+
+              state.doc.forEach((node, offset) => {
+                const el = blockEls[blockIdx]
+                blockIdx += 1
+                if (!el) return
+
+                const elRect = el.getBoundingClientRect()
+
+                // Manual page/section breaks end the current page — the
+                // next block starts a fresh page right after them.
+                if (node.type.name === 'pageBreak' || node.type.name === 'sectionBreak') {
+                  currentPageTop = elRect.bottom
+                  return
+                }
+
+                if (elRect.height === 0) return
+
+                let pageBottomNow = currentPageTop + pageHeight
+
+                // Whole block fits on the current page in the natural
+                // (no-widget) layout? Then we don't need a break.
+                if (elRect.bottom <= pageBottomNow + 0.5) {
+                  return
+                }
+
+                // Block overflows the current page. Probe for an
+                // intra-block break first — that's what Word does by
+                // default and what the user expects: fill the current
+                // page with as many of the block's lines as fit, then
+                // wrap the rest onto the next page.
+                //
+                // Probe at the LEFT edge of the block, not the middle.
+                // ``posAtCoords({left: middleX, top: pageBottomY})``
+                // would return a doc position in the middle of whichever
+                // line straddles ``pageBottomY`` — inserting a block
+                // widget there forces a visual line break mid-word.
+                // Probing at the left edge instead returns the START of
+                // the straddling line, so the whole line moves to the
+                // next page and the previous line fills out to the
+                // right margin like Word and Google Docs do.
+                const probeX = elRect.left + 1
+                let safety = 0
+                let pushedAny = false
+                while (elRect.bottom > pageBottomNow + 0.5 && safety < 200) {
+                  safety++
+                  const pos = posAtViewportY(view, pageBottomNow, probeX, offset, node.nodeSize)
+                  if (pos === null) break
+
+                  if (pos <= offset) {
+                    // The probe landed at or before the block's first
+                    // position — there's no line of THIS block we can
+                    // keep on the current page. That happens for
+                    // atomic blocks (images, manual breaks) and for
+                    // paragraphs whose first line already starts below
+                    // the page boundary. Fall back to a "page break
+                    // before block" ONLY on the first iteration — once
+                    // we have already pushed an intra-break we mustn't
+                    // push another one at the same place.
+                    if (!pushedAny && elRect.top > currentPageTop + 0.5) {
+                      positions.push(offset)
+                      pushedAny = true
+                      currentPageTop = elRect.top
+                      pageBottomNow = currentPageTop + pageHeight
+                      continue
+                    }
+                    break
+                  }
+
+                  // The position must sit AFTER any previously pushed
+                  // break and BEFORE the block's end.
+                  if (positions.length > 0 && pos <= positions[positions.length - 1]) break
+                  if (pos >= offset + node.nodeSize) break
+
+                  positions.push(pos)
+                  pushedAny = true
+                  currentPageTop = pageBottomNow
+                  pageBottomNow = currentPageTop + pageHeight
+                }
+              })
+
+              dispatchIfChanged(positions)
+            } finally {
+              // Restore widget display. If ``dispatchIfChanged`` removed
+              // the widgets via a state update, the DOM nodes in
+              // ``widgetEls`` may now be detached — assigning to .style
+              // on a detached element is harmless.
+              widgetEls.forEach((w, i) => {
+                w.style.display = savedDisplay[i]
+              })
+            }
           }
 
           function dispatchIfChanged(newPositions: number[]) {

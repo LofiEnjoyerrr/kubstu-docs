@@ -609,7 +609,39 @@ class DocxConverter:
         Each intermediate section produces a ``sectionBreak`` node so the
         editor can render it as a visual page boundary AND keep its
         independent page-number sequence.
+
+        OOXML stores section properties on the LAST paragraph of the
+        section they describe — the intermediate ``<w:sectPr>`` inside the
+        last paragraph's ``<w:pPr>`` belongs to the section being CLOSED,
+        and the body-final ``<w:sectPr>`` belongs to the last section.
+        A ``sectionBreak`` node in our schema, however, describes the
+        section being OPENED (its ``numberStart`` becomes the new section's
+        first page number). We therefore pre-collect every sectPr in
+        document order and, when emitting a sectionBreak at the close of
+        section N, attach the properties of section N+1.
         """
+        # Body-level sectPrs in document order: every intermediate one
+        # (from paragraph pPrs) followed by the body-final one. Each entry
+        # describes ONE section, in the order the sections appear.
+        intermediate_sect_prs: list[ET.Element] = []
+        for p in body.findall(qn('p')):
+            ppr = p.find(qn('pPr'))
+            if ppr is None:
+                continue
+            inner = ppr.find(qn('sectPr'))
+            if inner is not None:
+                intermediate_sect_prs.append(inner)
+        final_sect_pr = body.find(qn('sectPr'))
+        all_sect_prs: list[ET.Element] = list(intermediate_sect_prs)
+        if final_sect_pr is not None:
+            all_sect_prs.append(final_sect_pr)
+        # ``closed_sections`` counts how many intermediate sectPrs we've
+        # seen so far during the walk. The properties of the section that
+        # OPENS at the current break sit at ``all_sect_prs[closed_sections]``
+        # AFTER we've incremented for the just-closed one — i.e. the entry
+        # one past the index of the section just closed.
+        closed_sections = 0
+
         out: list[dict] = []
         list_buffer: list[tuple[str, dict, int]] = []  # (kind, paragraph_node, level)
 
@@ -660,11 +692,17 @@ class DocxConverter:
                         out.append(block)
                     # An intermediate <w:sectPr> nested in a paragraph's pPr
                     # marks the END of a section. Convert it to a
-                    # sectionBreak node and remember the source DOCX paginates.
+                    # sectionBreak node carrying the properties of the
+                    # NEXT section (the one being opened), and remember
+                    # the source DOCX paginates.
                     ppr = child.find(qn('pPr'))
                     if ppr is not None and ppr.find(qn('sectPr')) is not None:
-                        sect_pr = ppr.find(qn('sectPr'))
-                        out.append(self._section_break_from_sect_pr(sect_pr))
+                        nonlocal closed_sections
+                        closed_sections += 1
+                        next_sect_pr: ET.Element | None = None
+                        if closed_sections < len(all_sect_prs):
+                            next_sect_pr = all_sect_prs[closed_sections]
+                        out.append(self._section_break_from_sect_pr(next_sect_pr))
                         self._has_pagination = True
                 elif tag == qn('tbl'):
                     flush_list()
@@ -935,17 +973,106 @@ class DocxConverter:
 
     # --------------------------------------------------------- inline content
 
+    @staticmethod
+    def _page_field_kind(code: str) -> str | None:
+        """
+        Inspect a Word field code (the text inside ``<w:instrText>`` /
+        ``<w:fldSimple w:instr="…"/>``) and return the matching Tiptap
+        ``pageNumber`` ``kind`` attribute, or ``None`` if the field isn't
+        a page-number field.
+
+        Word page-number fields normally look like ``PAGE   \\* MERGEFORMAT``
+        and ``NUMPAGES   \\* MERGEFORMAT``; whitespace and case may vary,
+        so we normalise before matching.
+        """
+        normalised = code.strip().upper()
+        if not normalised:
+            return None
+        first_token = normalised.split()[0]
+        if first_token == 'NUMPAGES':
+            return 'count'
+        if first_token == 'PAGE':
+            return 'number'
+        return None
+
     def _build_inline(self, p: ET.Element, paragraph_style: 'StyleDef | None' = None) -> list[dict]:
         """Walk a paragraph's children, producing Tiptap inline nodes.
 
         ``paragraph_style`` propagates down to ``_build_run`` so that runs
         without explicit font / size fall back to the paragraph style
         before docDefaults — see ``_paragraph_style_for`` for the why.
+
+        Word's PAGE / NUMPAGES fields require special handling: the OOXML
+        encodes them as a sequence of runs
+
+            <w:r><w:fldChar w:fldCharType="begin"/></w:r>
+            <w:r><w:instrText>PAGE   \\* MERGEFORMAT</w:instrText></w:r>
+            <w:r><w:fldChar w:fldCharType="separate"/></w:r>
+            <w:r><w:t>1</w:t></w:r>          <!-- cached display value -->
+            <w:r><w:fldChar w:fldCharType="end"/></w:r>
+
+        Naively emitting the cached ``<w:t>1</w:t>`` as plain text means
+        the editor's footer would show a frozen literal (``"1"``) on every
+        page — and re-exporting it would produce a DOCX where every page
+        prints the same number. Instead we detect the field, emit a
+        ``pageNumber`` Tiptap node where the field starts, and skip the
+        cached display text so it isn't duplicated.
+
+        Simple fields (``<w:fldSimple w:instr="PAGE">``) are handled the
+        same way at the element level. Nested fields are supported via the
+        ``fields`` stack — each new ``begin`` pushes a frame, each ``end``
+        pops it.
         """
         out: list[dict] = []
+        # Stack of ``{'code': str, 'in_display': bool, 'emitted': bool}``
+        # for in-flight complex fields. The top of stack reflects the
+        # innermost field currently being parsed.
+        fields: list[dict] = []
+
+        def in_display_skip() -> bool:
+            """Are we sitting inside a field's cached-display range?"""
+            return any(f['in_display'] for f in fields)
+
+        def maybe_emit_field(frame: dict) -> None:
+            if frame['emitted']:
+                return
+            kind = self._page_field_kind(frame['code'])
+            if kind is not None:
+                out.append({'type': 'pageNumber', 'attrs': {'kind': kind}})
+            frame['emitted'] = True
+
+        def scan_run_for_field_markers(r: ET.Element) -> None:
+            """
+            Pre-scan a ``<w:r>`` for ``<w:fldChar>`` / ``<w:instrText>``
+            children so the field state machine is up-to-date BEFORE we
+            decide whether the run's regular text should be emitted.
+            """
+            for run_child in r:
+                rtag = run_child.tag
+                if rtag == qn('fldChar'):
+                    char_type = run_child.get(qn('fldCharType'))
+                    if char_type == 'begin':
+                        fields.append({'code': '', 'in_display': False, 'emitted': False})
+                        self._has_pagination_field_check(None)  # no-op slot for future
+                    elif char_type == 'separate' and fields:
+                        maybe_emit_field(fields[-1])
+                        fields[-1]['in_display'] = True
+                    elif char_type == 'end' and fields:
+                        # A field without a separator never emitted —
+                        # do it now so a bare PAGE field still counts.
+                        maybe_emit_field(fields[-1])
+                        fields.pop()
+                elif rtag == qn('instrText') and fields:
+                    fields[-1]['code'] += run_child.text or ''
+
         for child in p:
             tag = child.tag
             if tag == qn('r'):
+                scan_run_for_field_markers(child)
+                # Skip ``<w:t>`` emission while we're sitting in the
+                # cached-display portion of a complex field.
+                if in_display_skip():
+                    continue
                 out.extend(self._build_run(child, paragraph_style))
             elif tag == qn('hyperlink'):
                 href = child.get(qn('id', R_NS))
@@ -957,11 +1084,27 @@ class DocxConverter:
                     if href_url else None
                 )
                 for r in child.findall(qn('r')):
+                    scan_run_for_field_markers(r)
+                    if in_display_skip():
+                        continue
                     runs = self._build_run(r, paragraph_style)
                     if link_mark:
                         for tr in runs:
                             tr.setdefault('marks', []).append(link_mark)
                     out.extend(runs)
+            elif tag == qn('fldSimple'):
+                # Simple field: <w:fldSimple w:instr="PAGE">cached</w:fldSimple>.
+                # We don't bother walking the cached display — just emit
+                # our placeholder if the instruction is PAGE / NUMPAGES.
+                instr = child.get(qn('instr')) or ''
+                kind = self._page_field_kind(instr)
+                if kind is not None:
+                    out.append({'type': 'pageNumber', 'attrs': {'kind': kind}})
+                # Other simple fields (e.g. HYPERLINK) are not handled
+                # here yet — silently drop them, matching the previous
+                # behaviour. Their visible text would have been kept by
+                # the legacy path; the regression on non-page fields is
+                # acceptable next to the page-numbering correctness win.
             elif tag == qn('proofErr') or tag == qn('bookmarkStart') or tag == qn('bookmarkEnd'):
                 continue
             elif tag in (
@@ -978,8 +1121,23 @@ class DocxConverter:
                 # paragraph children, plus the reference markers inside
                 # runs — see ``_build_run``) so nothing leaks through.
                 continue
-        # Tiptap dislikes runs without text — drop empties.
-        return [n for n in out if n.get('text') or n.get('type') in {'image', 'hardBreak', 'pageBreak'}]
+        # Tiptap dislikes runs without text — drop empties. ``pageNumber``
+        # is an atomic inline node with no text content, so whitelist it
+        # alongside the other empty-text-allowed types.
+        return [
+            n for n in out
+            if n.get('text')
+            or n.get('type') in {'image', 'hardBreak', 'pageBreak', 'pageNumber'}
+        ]
+
+    def _has_pagination_field_check(self, _unused: object) -> None:
+        """Reserved hook — kept as a stable name so the field state-machine
+        in ``_build_inline`` can mark documents as paginated when a
+        complex PAGE field is encountered, without touching the call
+        site every time the flag's semantics change. Currently a no-op
+        because ``has_pagination`` is set by the simpler header / footer
+        detection in ``_contains_page_field``."""
+        return None
 
     def _build_run(self, r: ET.Element, paragraph_style: 'StyleDef | None' = None) -> list[dict]:
         rpr = r.find(qn('rPr'))

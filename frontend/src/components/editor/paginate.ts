@@ -77,8 +77,12 @@ export function paginate(
       section += 1
       const reset = br.attrs?.restartNumbering !== false
       if (reset) {
+        // Word permits ``pgNumType w:start="0"`` for cover sections and
+        // similar — the source DOCX explicitly wants page 0 there. Treat
+        // any non-negative integer as a valid explicit start, falling
+        // back to 1 only when the attribute is missing or malformed.
         const start = br.attrs?.numberStart
-        current = typeof start === 'number' && start >= 1 ? Math.floor(start) : 1
+        current = typeof start === 'number' && start >= 0 ? Math.floor(start) : 1
       } else {
         current += 1
       }
@@ -86,7 +90,7 @@ export function paginate(
       const reset = !!br.attrs?.restartNumbering
       if (reset) {
         const start = br.attrs?.numberStart
-        current = typeof start === 'number' && start >= 1 ? Math.floor(start) : 1
+        current = typeof start === 'number' && start >= 0 ? Math.floor(start) : 1
       } else {
         current += 1
       }

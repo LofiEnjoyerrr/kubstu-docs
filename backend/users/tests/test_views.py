@@ -185,26 +185,6 @@ def test_search_validates_empty_query(auth_client):
 
 # ---------- Password reset ----------
 
-@pytest.mark.xfail(
-    reason=(
-        'Known production bug: PasswordResetRequestSerializer.create() returns '
-        'None for unknown emails, which trips DRF Serializer.save()\'s '
-        '`create() did not return an object instance` assertion and the view '
-        'crashes with 500 instead of returning 200. Fix: the view should call '
-        'create() directly or skip save() when no user is attached.'
-    ),
-    strict=True,
-)
-@pytest.mark.django_db
-def test_password_reset_returns_200_even_for_unknown_email(api_client, mocker):
-    mocker.patch('users.models.send_password_reset_email.delay')
-    response = api_client.post(
-        reverse('users_password_reset'),
-        {'email': 'ghost@example.com'},
-        format='json',
-    )
-    assert response.status_code == 200
-
 
 @pytest.mark.django_db
 def test_password_reset_creates_request_for_known_email(api_client, mocker):

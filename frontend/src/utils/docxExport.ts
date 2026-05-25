@@ -759,7 +759,11 @@ interface SectionGroup {
 function splitIntoSections(root: TiptapNode, initialStart: number): SectionGroup[] {
   const sections: SectionGroup[] = []
   let current: TiptapNode[] = []
-  let currentStart = Math.max(1, initialStart | 0)
+  // Allow 0 explicitly — Word's pgNumType.start="0" is a legal value for
+  // unnumbered cover sections, and clamping it to 1 here would lose the
+  // semantic on round-trip (PAGE field in the footer would then display
+  // "1" on a page the source DOCX intended to display "0").
+  let currentStart = Math.max(0, initialStart | 0)
   let currentContinue = false
 
   for (const node of root.content ?? []) {
