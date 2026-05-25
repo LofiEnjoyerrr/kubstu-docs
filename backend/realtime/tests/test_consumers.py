@@ -32,8 +32,11 @@ def _consumer(*, user_id=2):
     consumer.doc_owner_id = 1
     consumer.doc_title = 'Doc'
     consumer.edit_notification_sent = False
+    consumer.can_edit_document = True
 
+    consumer.saved_edits = []
     async def save_edit(_content):
+        consumer.saved_edits.append(_content)
         return 1
 
     consumer._save_edit = save_edit
@@ -63,3 +66,15 @@ def test_edit_notification_is_enqueued_again_after_reconnect(mocker):
     async_to_sync(_consumer()._handle_edit)({'type': 'edit', 'delta': {'step': 1}})
 
     assert enqueue.call_count == 2
+
+
+def test_read_only_consumer_cannot_persist_or_broadcast_edit(mocker):
+    enqueue = mocker.patch('realtime.consumers.enqueue_edit_notification')
+    consumer = _consumer()
+    consumer.can_edit_document = False
+
+    async_to_sync(consumer._handle_edit)({'type': 'edit', 'delta': {'step': 1}})
+
+    assert consumer.saved_edits == []
+    assert consumer.channel_layer.events == []
+    enqueue.assert_not_called()

@@ -132,6 +132,35 @@ def test_editor_can_patch_content_but_not_title(
 
 
 @pytest.mark.django_db
+def test_public_document_does_not_grant_edit_to_unrelated_user(
+    other_auth_client,
+    public_document,
+):
+    response = other_auth_client.patch(
+        reverse('doc', args=[public_document.pk]),
+        {'content': json.dumps({'type': 'doc'})},
+        format='json',
+    )
+    assert response.status_code == 403
+
+
+@pytest.mark.django_db
+def test_public_document_explicit_editor_can_patch_content(
+    other_auth_client,
+    public_document,
+    other_user,
+):
+    DocumentAccessFactory(document=public_document, user=other_user, role='editor')
+
+    response = other_auth_client.patch(
+        reverse('doc', args=[public_document.pk]),
+        {'content': json.dumps({'type': 'doc'})},
+        format='json',
+    )
+    assert response.status_code == 200
+
+
+@pytest.mark.django_db
 def test_viewer_cannot_patch_content(
     other_auth_client, document, viewer_access,
 ):
@@ -261,9 +290,22 @@ def test_my_access_returns_owner_for_owner(auth_client, document):
 
 
 @pytest.mark.django_db
-def test_my_access_returns_editor_for_authed_user_on_public_doc(
+def test_my_access_returns_viewer_for_authed_user_on_public_doc(
     other_auth_client, public_document,
 ):
+    response = other_auth_client.get(reverse('doc_my_access', args=[public_document.pk]))
+    assert response.status_code == 200
+    assert response.data['role'] == 'viewer'
+
+
+@pytest.mark.django_db
+def test_my_access_returns_assigned_editor_on_public_doc(
+    other_auth_client,
+    public_document,
+    other_user,
+):
+    DocumentAccessFactory(document=public_document, user=other_user, role='editor')
+
     response = other_auth_client.get(reverse('doc_my_access', args=[public_document.pk]))
     assert response.status_code == 200
     assert response.data['role'] == 'editor'
@@ -334,9 +376,25 @@ def test_create_comment_requires_auth(api_client, public_document):
 
 
 @pytest.mark.django_db
-def test_authed_user_can_comment_on_public_doc(
+def test_unrelated_user_cannot_comment_on_public_doc(
     other_auth_client, public_document, _silence_broadcasts,
 ):
+    response = other_auth_client.post(
+        reverse('doc_comments', args=[public_document.pk]),
+        {'quote': 'q', 'from_pos': 0, 'to_pos': 5, 'content': 'hi'},
+        format='json',
+    )
+    assert response.status_code == 403
+    assert Comment.objects.filter(document=public_document).count() == 0
+    assert not _silence_broadcasts.called
+
+
+@pytest.mark.django_db
+def test_user_with_access_can_comment_on_public_doc(
+    other_auth_client, public_document, other_user, _silence_broadcasts,
+):
+    DocumentAccessFactory(document=public_document, user=other_user, role='viewer')
+
     response = other_auth_client.post(
         reverse('doc_comments', args=[public_document.pk]),
         {'quote': 'q', 'from_pos': 0, 'to_pos': 5, 'content': 'hi'},
@@ -421,6 +479,32 @@ def test_upload_image_requires_auth(api_client, public_document):
         format='multipart',
     )
     assert response.status_code in (401, 403)
+
+
+@pytest.mark.django_db
+def test_unrelated_user_cannot_upload_image_to_public_doc(other_auth_client, public_document):
+    upload = SimpleUploadedFile('img.png', _image_bytes(), content_type='image/png')
+    response = other_auth_client.post(
+        reverse('doc_image_upload', args=[public_document.pk]),
+        {'image': upload},
+        format='multipart',
+    )
+    assert response.status_code == 403
+
+
+@pytest.mark.django_db
+def test_unrelated_user_cannot_import_docx_to_public_doc(other_auth_client, public_document):
+    upload = SimpleUploadedFile(
+        'doc.docx',
+        b'not a real docx',
+        content_type='application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+    )
+    response = other_auth_client.post(
+        reverse('doc_import_docx', args=[public_document.pk]),
+        {'file': upload},
+        format='multipart',
+    )
+    assert response.status_code == 403
 
 
 @pytest.mark.django_db

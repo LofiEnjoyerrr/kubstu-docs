@@ -27,6 +27,7 @@ class DocumentConsumer(AsyncWebsocketConsumer):
         self.doc_owner_id: int | None = None
         self.doc_title: str = ''
         self.edit_notification_sent = False
+        self.can_edit_document = False
 
         if not await self._check_access():
             await self.close(code=4003)
@@ -107,6 +108,8 @@ class DocumentConsumer(AsyncWebsocketConsumer):
         """
         delta = data.get('delta')
         if delta is None:
+            return
+        if not self.can_edit_document:
             return
 
         # Prefer an explicit separate state for persistence; fall back to delta.
@@ -295,15 +298,20 @@ class DocumentConsumer(AsyncWebsocketConsumer):
         self.doc_owner_id = doc.owner_id
         self.doc_title = doc.title
 
-        if doc.is_public:
-            return True
-
         user = self.user
         if not user.is_authenticated:
-            return False
+            return doc.is_public
         if doc.owner_id == user.pk:
+            self.can_edit_document = True
             return True
-        return DocumentAccess.objects.filter(document_id=self.doc_id, user=user).exists()
+        access = DocumentAccess.objects.filter(
+            document_id=self.doc_id,
+            user=user,
+        ).only('role').first()
+        if access:
+            self.can_edit_document = access.role == 'editor'
+            return True
+        return doc.is_public
 
     @database_sync_to_async
     def _get_document(self) -> tuple:

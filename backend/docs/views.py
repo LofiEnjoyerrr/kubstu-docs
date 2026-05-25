@@ -62,6 +62,14 @@ def _require_read_access(document: Document, user) -> None:
     raise PermissionDenied('У вас нет доступа к этому документу')
 
 
+def _has_edit_access(document: Document, user) -> bool:
+    if not user.is_authenticated:
+        return False
+    if document.owner == user:
+        return True
+    return document.accesses.filter(user=user, role='editor').exists()
+
+
 class MeDocumentsCreateAPIView(APIView):
     permission_classes = [IsAuthenticated]
 
@@ -122,11 +130,7 @@ class DocumentsRetrieveUpdateAPIView(APIView):
                 )
             if not request.user.is_authenticated:
                 raise PermissionDenied('Требуется авторизация')
-            allowed = (
-                document.is_public
-                or document.accesses.filter(user=request.user, role='editor').exists()
-            )
-            if not allowed:
+            if not _has_edit_access(document, request.user):
                 raise PermissionDenied('Нет прав на редактирование документа')
 
         serializer = PatchDocumentSerializer(document, data=request.data, partial=True)
@@ -229,16 +233,17 @@ class MyDocumentAccessAPIView(APIView):
         document = _get_document_or_404(pk)
         if request.user.is_authenticated and document.owner == request.user:
             return Response(MyAccessSerializer({'role': 'owner'}).data)
+        if request.user.is_authenticated:
+            try:
+                access = DocumentAccess.objects.get(document=document, user=request.user)
+                return Response(MyAccessSerializer({'role': access.role}).data)
+            except DocumentAccess.DoesNotExist:
+                pass
         if document.is_public:
-            role = 'editor' if request.user.is_authenticated else 'viewer'
-            return Response(MyAccessSerializer({'role': role}).data)
+            return Response(MyAccessSerializer({'role': 'viewer'}).data)
         if not request.user.is_authenticated:
             raise PermissionDenied('Требуется авторизация')
-        try:
-            access = DocumentAccess.objects.get(document=document, user=request.user)
-            return Response(MyAccessSerializer({'role': access.role}).data)
-        except DocumentAccess.DoesNotExist:
-            raise PermissionDenied('У вас нет доступа к этому документу')
+        raise PermissionDenied('У вас нет доступа к этому документу')
 
 
 class DocumentsSearchAPIView(APIView):
@@ -262,7 +267,8 @@ class DocumentImageUploadAPIView(APIView):
 
     def post(self, request, pk):
         document = _get_document_or_404(pk)
-        _require_read_access(document, request.user)
+        if not _has_edit_access(document, request.user):
+            raise PermissionDenied('Нет прав на изменение документа')
 
         image = request.FILES.get('image')
         if not image:
@@ -338,13 +344,8 @@ class DocumentDocxImportAPIView(APIView):
         document = _get_document_or_404(pk)
 
         # Editors are allowed to import — same rule as content edit.
-        if document.owner != request.user:
-            allowed = (
-                document.is_public
-                or document.accesses.filter(user=request.user, role='editor').exists()
-            )
-            if not allowed:
-                raise PermissionDenied('Нет прав на изменение документа')
+        if not _has_edit_access(document, request.user):
+            raise PermissionDenied('Нет прав на изменение документа')
 
         upload = request.FILES.get('file')
         if not upload:
@@ -450,6 +451,11 @@ class DocumentCommentsAPIView(APIView):
             raise PermissionDenied('Требуется авторизация')
         document = _get_document_or_404(pk)
         _require_read_access(document, request.user)
+        if (
+            document.owner != request.user
+            and not document.accesses.filter(user=request.user).exists()
+        ):
+            raise PermissionDenied('У вас нет доступа к комментированию документа')
         serializer = CreateCommentSerializer(data=request.data)
         serializer.is_valid(raise_exception=True)
         comment = serializer.save(document=document, author=request.user)
