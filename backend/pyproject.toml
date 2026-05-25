@@ -29,3 +29,18 @@ build-backend = "poetry.core.masonry.api"
 
 [tool.poetry]
 package-mode = false
+
+[tool.poetry.group.dev.dependencies]
+pytest = "^8.3.0"
+pytest-django = "^4.9.0"
+pytest-mock = "^3.14.0"
+factory-boy = "^3.3.0"
+
+[tool.pytest.ini_options]
+DJANGO_SETTINGS_MODULE = "config.test_settings"
+python_files = ["tests.py", "test_*.py", "*_tests.py"]
+addopts = "-ra --strict-markers --tb=short"
+filterwarnings = [
+    "ignore::DeprecationWarning",
+    "ignore::PendingDeprecationWarning",
+]

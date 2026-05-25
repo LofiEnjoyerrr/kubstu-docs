@@ -798,20 +798,21 @@ class DocxConverter:
                         if rule in (None, 'auto'):
                             # ``auto`` line spacing is encoded in 240ths of
                             # single spacing: 240 = single (1.0), 360 = 1.5,
-                            # 480 = double, 276 = Word's 1.15 default. We
-                            # previously dropped this value because there's
-                            # no CSS analogue to Word's "natural metrics"
-                            # and a multiplier slightly shifts page breaks
-                            # vs. the source DOCX. That trade-off was wrong:
-                            # losing the user's explicit 1.5/double spacing
-                            # produces a visibly wrong document, while the
-                            # page-drift is small. So we now emit the
-                            # multiplier for every non-single value, and
-                            # leave 240 (= 1.0 = the CSS default) unset.
-                            if n != 240:
-                                line_height = f'{round(n / 240.0, 3)}'
-                            else:
-                                line_height = None
+                            # 480 = double, 276 = Word's 1.15 default. Every
+                            # multiplier — including ``1.0`` — needs to land
+                            # on the editor node, otherwise the export loses
+                            # the explicit ``lineRule="auto"`` semantic and
+                            # falls back to the docDefaults ``lineRule="exact"``,
+                            # which is denser than Word's natural metrics by
+                            # ~15% for Times 14pt. That density shift was
+                            # what made source→export round-trips drop
+                            # entire pages of pagination on documents like
+                            # the user's KR — the 72 single-spaced
+                            # paragraphs all suddenly rendered with strict
+                            # 14pt per line instead of the source's ~17pt
+                            # natural metrics, packing more text into each
+                            # page and shifting every break upward.
+                            line_height = f'{round(n / 240.0, 3)}'
                         else:
                             # ``exact`` / ``atLeast`` — value is in twips,
                             # not 240ths. Convert to a multiplier against

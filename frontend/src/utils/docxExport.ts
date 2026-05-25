@@ -32,7 +32,6 @@ import { saveAs } from 'file-saver'
 import {
   DEFAULT_FONT_FAMILY,
   DEFAULT_FONT_SIZE_HALF_POINTS,
-  DEFAULT_LINE_SPACING_TWIPS,
 } from '../components/editor/typographyDefaults'
 import type { PageLayout } from '../types'
 
@@ -890,22 +889,23 @@ export async function exportToDocx(
   const doc = new Document({
     creator: 'KubSTU Docs',
     title,
-    // Document defaults — runs/paragraphs without explicit values pick these
-    // up so the DOCX renders text at the same density as the editor.
+    // Document defaults applied to paragraphs that don't carry their own
+    // ``<w:spacing>``.
     //
-    // ``before: 0, after: 0`` matters: Word's built-in Normal style adds 8pt
-    // after each paragraph, which would let Word fit noticeably fewer lines
-    // per page than the editor (the editor's CSS reset puts zero margin on
-    // <p>). Setting these here aligns the two.
+    // ``before: 0, after: 0`` cancels Word's built-in Normal-style 8pt
+    // trailing margin so the editor's zero-margin paragraphs and the
+    // exported DOCX agree on vertical density.
     //
-    // Pin docDefaults line spacing to the same multiplier the editor uses
-    // (``line-height: 1`` in CSS, ``DEFAULT_LINE_SPACING_TWIPS`` here).
-    // ``lineRule="exact"`` is deliberate: ``atLeast`` would let Word pad
-    // each line up to the font's natural ascent + descent + line gap,
-    // which for Times New Roman 14pt cuts the page capacity by ~15% vs
-    // what the editor computes. With ``exact`` Word renders precisely
-    // the value we give it, so the editor and the exported DOCX agree
-    // on lines-per-page.
+    // ``line: 240, lineRule: 'auto'`` is the OOXML encoding of "single
+    // spacing using the font's natural metrics" — the same default Word
+    // applies to a brand-new document. Using ``lineRule: 'exact'`` here
+    // (as we used to) pinned every defaulted paragraph to exactly the
+    // font-size in twips, which is ~15% denser than Word's natural
+    // metrics for Times 14pt: page breaks crept up the document and
+    // source → import → export round-trips no longer matched the source
+    // pagination. With ``auto`` Word uses its own per-font metrics, so
+    // an unannotated paragraph in the exported file occupies the same
+    // line height the source DOCX did.
     styles: {
       default: {
         document: {
@@ -917,8 +917,8 @@ export async function exportToDocx(
             spacing: {
               before: 0,
               after: 0,
-              line: DEFAULT_LINE_SPACING_TWIPS,
-              lineRule: 'exact',
+              line: 240,
+              lineRule: 'auto',
             },
           },
         },
