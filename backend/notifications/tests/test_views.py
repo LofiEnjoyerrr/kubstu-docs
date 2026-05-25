@@ -2,7 +2,11 @@ import pytest
 from django.test import override_settings
 from django.urls import reverse
 
-from notifications.models import PushSubscription
+from notifications.models import (
+    DocumentNotificationSettings,
+    PushSubscription,
+    UserNotificationSettings,
+)
 from notifications.tests.factories import PushSubscriptionFactory
 
 
@@ -84,3 +88,65 @@ def test_unsubscribe_requires_auth(api_client):
         format='json',
     )
     assert response.status_code in (401, 403)
+
+
+@pytest.mark.django_db
+def test_get_global_notification_preferences_defaults_to_enabled(auth_client, user):
+    response = auth_client.get(reverse('notification-preferences'))
+
+    assert response.status_code == 200
+    assert response.data == {'edit_notifications_enabled': True}
+    assert UserNotificationSettings.objects.filter(user=user).exists()
+
+
+@pytest.mark.django_db
+def test_patch_global_notification_preferences(auth_client, user):
+    response = auth_client.patch(
+        reverse('notification-preferences'),
+        {'edit_notifications_enabled': False},
+        format='json',
+    )
+
+    assert response.status_code == 200
+    assert response.data == {'edit_notifications_enabled': False}
+    assert not user.notification_settings.edit_notifications_enabled
+
+
+@pytest.mark.django_db
+def test_get_document_notification_preferences_defaults_to_enabled(auth_client, document):
+    response = auth_client.get(reverse('document-notification-preferences', args=[document.pk]))
+
+    assert response.status_code == 200
+    assert response.data == {
+        'document_id': document.pk,
+        'edit_notifications_enabled': True,
+    }
+    assert DocumentNotificationSettings.objects.filter(document=document).exists()
+
+
+@pytest.mark.django_db
+def test_patch_document_notification_preferences(auth_client, document):
+    response = auth_client.patch(
+        reverse('document-notification-preferences', args=[document.pk]),
+        {'edit_notifications_enabled': False},
+        format='json',
+    )
+
+    assert response.status_code == 200
+    assert response.data == {
+        'document_id': document.pk,
+        'edit_notifications_enabled': False,
+    }
+    assert not document.notification_settings.edit_notifications_enabled
+
+
+@pytest.mark.django_db
+def test_non_owner_cannot_access_document_notification_preferences(
+    other_auth_client,
+    document,
+):
+    response = other_auth_client.get(
+        reverse('document-notification-preferences', args=[document.pk]),
+    )
+
+    assert response.status_code == 404

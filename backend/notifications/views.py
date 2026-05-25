@@ -5,10 +5,17 @@ from rest_framework.permissions import AllowAny, IsAuthenticated
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
-from notifications.models import PushSubscription
+from docs.models import Document
+from notifications.models import (
+    DocumentNotificationSettings,
+    PushSubscription,
+    UserNotificationSettings,
+)
 from notifications.serializers import (
+    DocumentNotificationSettingsSerializer,
     PushSubscriptionSerializer,
     PushUnsubscribeSerializer,
+    UserNotificationSettingsSerializer,
 )
 
 
@@ -73,3 +80,68 @@ class UnsubscribeAPIView(APIView):
             endpoint=serializer.validated_data['endpoint'],
         ).delete()
         return Response(status=status.HTTP_204_NO_CONTENT)
+
+
+class UserNotificationSettingsAPIView(APIView):
+    """Read/update owner-wide notification preferences."""
+
+    permission_classes = [IsAuthenticated]
+
+    def _get_settings(self, user) -> UserNotificationSettings:
+        settings_obj, _ = UserNotificationSettings.objects.get_or_create(user=user)
+        return settings_obj
+
+    @extend_schema(responses=UserNotificationSettingsSerializer)
+    def get(self, request):
+        serializer = UserNotificationSettingsSerializer(self._get_settings(request.user))
+        return Response(serializer.data)
+
+    @extend_schema(request=UserNotificationSettingsSerializer, responses=UserNotificationSettingsSerializer)
+    def patch(self, request):
+        settings_obj = self._get_settings(request.user)
+        serializer = UserNotificationSettingsSerializer(
+            settings_obj,
+            data=request.data,
+            partial=True,
+        )
+        serializer.is_valid(raise_exception=True)
+        serializer.save()
+        return Response(serializer.data)
+
+
+class DocumentNotificationSettingsAPIView(APIView):
+    """Read/update notification preferences for one owned document."""
+
+    permission_classes = [IsAuthenticated]
+
+    def _get_document(self, request, doc_id: int) -> Document:
+        return Document.objects.get(pk=doc_id, owner=request.user)
+
+    def _get_settings(self, document: Document) -> DocumentNotificationSettings:
+        settings_obj, _ = DocumentNotificationSettings.objects.get_or_create(document=document)
+        return settings_obj
+
+    @extend_schema(responses=DocumentNotificationSettingsSerializer)
+    def get(self, request, doc_id: int):
+        try:
+            document = self._get_document(request, doc_id)
+        except Document.DoesNotExist:
+            return Response(status=status.HTTP_404_NOT_FOUND)
+        serializer = DocumentNotificationSettingsSerializer(self._get_settings(document))
+        return Response(serializer.data)
+
+    @extend_schema(request=DocumentNotificationSettingsSerializer, responses=DocumentNotificationSettingsSerializer)
+    def patch(self, request, doc_id: int):
+        try:
+            document = self._get_document(request, doc_id)
+        except Document.DoesNotExist:
+            return Response(status=status.HTTP_404_NOT_FOUND)
+        settings_obj = self._get_settings(document)
+        serializer = DocumentNotificationSettingsSerializer(
+            settings_obj,
+            data=request.data,
+            partial=True,
+        )
+        serializer.is_valid(raise_exception=True)
+        serializer.save()
+        return Response(serializer.data)

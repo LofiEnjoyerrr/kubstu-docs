@@ -152,10 +152,7 @@ MEDIA_ROOT = os.path.join(BASE_DIR, 'media/')
 CELERY_BROKER_URL = env('CELERY_BROKER_URL', default='redis://127.0.0.1:6379/1')
 CELERY_RESULT_BACKEND = env('CELERY_RESULT_BACKEND', default='redis://127.0.0.1:6379/2')
 
-# Cache backed by the same Redis instance the channel layer uses. The push
-# throttle (``notifications.tasks``) uses Django's cache API to enforce the
-# 15-minute freeze per (owner, doc, editor) tuple — Redis gives us atomic
-# ``cache.add`` semantics that "first writer wins" across workers.
+# Cache backed by the same Redis instance the channel layer uses.
 CACHES = {
     'default': {
         'BACKEND': 'django_redis.cache.RedisCache',

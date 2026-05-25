@@ -111,6 +111,36 @@
           {{ doc.is_public ? 'Публичный' : 'Приватный' }}
         </button>
 
+        <!-- Document notifications toggle -->
+        <button
+          v-if="myRole === 'owner' && doc"
+          class="flex items-center gap-1.5 text-xs px-2.5 py-1.5 rounded-lg border transition-colors disabled:opacity-60"
+          :class="docNotificationsEnabled
+            ? 'border-primary-300 bg-primary-50 text-primary-700 hover:bg-primary-100'
+            : 'border-slate-200 bg-white text-slate-600 hover:bg-slate-50'"
+          :disabled="isSavingDocNotifications"
+          :title="docNotificationsEnabled ? 'Уведомления по документу включены' : 'Уведомления по документу выключены'"
+          @click="toggleDocNotifications"
+        >
+          <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path
+              v-if="docNotificationsEnabled"
+              stroke-linecap="round"
+              stroke-linejoin="round"
+              stroke-width="2"
+              d="M15 17h5l-1.405-1.405A2.032 2.032 0 0118 14.158V11a6 6 0 10-12 0v3.159c0 .538-.214 1.055-.595 1.436L4 17h5m6 0a3 3 0 01-6 0m6 0H9"
+            />
+            <path
+              v-else
+              stroke-linecap="round"
+              stroke-linejoin="round"
+              stroke-width="2"
+              d="M13.73 21a3 3 0 01-3.46 0M18 8A6 6 0 006.714 5.186M6 8c0 7-3 9-3 9h14M3 3l18 18"
+            />
+          </svg>
+          {{ docNotificationsEnabled ? 'Уведомления' : 'Без уведомлений' }}
+        </button>
+
         <!-- Share -->
         <button v-if="myRole === 'owner'" class="btn-primary btn-sm" @click="showShare = true">
           <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -241,6 +271,7 @@ import TiptapEditor from '../components/editor/TiptapEditor.vue'
 import ShareModal from '../components/ShareModal.vue'
 import CommentPanel from '../components/CommentPanel.vue'
 import * as docsApi from '../api/documents'
+import * as notificationsApi from '../api/notifications'
 import { resolveMediaUrl } from '../utils/media'
 import type { Document, Comment, PageLayout } from '../types'
 
@@ -261,6 +292,8 @@ const isSaving = ref(false)
 const lastSaved = ref(false)
 const editableTitle = ref('')
 const myRole = ref<'owner' | 'editor' | 'viewer' | null>(null)
+const docNotificationsEnabled = ref(true)
+const isSavingDocNotifications = ref(false)
 
 const pageLayout = ref<PageLayout>({
   page_width: 816,
@@ -444,6 +477,7 @@ onMounted(async () => {
 
     if (myRole.value === 'owner') {
       docsStore.fetchAccesses(docId.value)
+      loadDocNotificationPreferences()
     }
   } catch (e: unknown) {
     const err = e as { response?: { status?: number } }
@@ -699,6 +733,28 @@ async function togglePublic() {
   if (!doc.value) return
   await docsStore.updateDocument(docId.value, { is_public: !doc.value.is_public })
   doc.value = docsStore.currentDocument
+}
+
+async function loadDocNotificationPreferences() {
+  try {
+    const res = await notificationsApi.getDocumentNotificationPreferences(docId.value)
+    docNotificationsEnabled.value = res.data.edit_notifications_enabled
+  } catch {
+    docNotificationsEnabled.value = true
+  }
+}
+
+async function toggleDocNotifications() {
+  isSavingDocNotifications.value = true
+  const nextValue = !docNotificationsEnabled.value
+  try {
+    const res = await notificationsApi.updateDocumentNotificationPreferences(docId.value, nextValue)
+    docNotificationsEnabled.value = res.data.edit_notifications_enabled
+  } catch {
+    window.alert('Не удалось сохранить настройки уведомлений.')
+  } finally {
+    isSavingDocNotifications.value = false
+  }
 }
 
 async function askDelete() {

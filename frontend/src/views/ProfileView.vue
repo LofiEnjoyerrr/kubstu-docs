@@ -65,8 +65,8 @@
             <p class="text-sm text-slate-500 mt-0.5">
               Когда другой пользователь начинает менять ваш документ, вы
               получите уведомление в браузере — даже если вкладка закрыта.
-              Чтобы не спамить, повторные уведомления о том же документе и
-              том же пользователе приостанавливаются на 15 минут.
+              Повторное уведомление придёт, если пользователь выйдет из
+              документа и начнёт редактировать его заново.
             </p>
             <p
               v-if="push.state.value === 'denied'"
@@ -92,6 +92,41 @@
             @click="onTogglePush"
           >
             {{ pushButtonLabel }}
+          </button>
+        </div>
+
+        <div class="divider" />
+
+        <!-- Document notification settings -->
+        <div class="flex items-start justify-between gap-4">
+          <div>
+            <p class="font-semibold text-slate-800">Уведомления для моих документов</p>
+            <p class="text-sm text-slate-500 mt-0.5">
+              Глобальный переключатель для уведомлений о редактировании всех
+              документов, которые вы создали. Настройки отдельных документов
+              работают только когда этот переключатель включён.
+            </p>
+            <p v-if="notificationPrefsError" class="text-xs text-red-600 mt-1">
+              {{ notificationPrefsError }}
+            </p>
+          </div>
+          <button
+            type="button"
+            class="shrink-0"
+            :class="globalEditNotificationsEnabled ? 'btn-secondary' : 'btn-primary'"
+            :disabled="isLoadingNotificationPrefs || isSavingNotificationPrefs"
+            @click="toggleGlobalEditNotifications"
+          >
+            <svg
+              v-if="isLoadingNotificationPrefs || isSavingNotificationPrefs"
+              class="w-4 h-4 animate-spin"
+              fill="none"
+              viewBox="0 0 24 24"
+            >
+              <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"/>
+              <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8H4z"/>
+            </svg>
+            {{ globalEditNotificationsEnabled ? 'Выключить для всех' : 'Включить для всех' }}
           </button>
         </div>
 
@@ -168,6 +203,7 @@ import { ref, reactive, computed, onMounted } from 'vue'
 import { useAuthStore } from '../stores/auth'
 import { resolveMediaUrl } from '../utils/media'
 import { usePushNotifications } from '../composables/usePushNotifications'
+import * as notificationsApi from '../api/notifications'
 
 const auth = useAuthStore()
 const avatarInput = ref<HTMLInputElement | null>(null)
@@ -176,6 +212,10 @@ const pendingAvatar = ref<File | null>(null)
 const isSaving = ref(false)
 const saveSuccess = ref(false)
 const saveError = ref('')
+const globalEditNotificationsEnabled = ref(true)
+const isLoadingNotificationPrefs = ref(false)
+const isSavingNotificationPrefs = ref(false)
+const notificationPrefsError = ref('')
 
 const form = reactive({ first_name: '', last_name: '', username: '' })
 const errors = reactive({ username: '' })
@@ -217,6 +257,7 @@ onMounted(() => {
     form.last_name = auth.user.last_name
     form.username = auth.user.username
   }
+  loadNotificationPreferences()
 })
 
 function onAvatarChange(e: Event) {
@@ -224,6 +265,33 @@ function onAvatarChange(e: Event) {
   if (!file) return
   pendingAvatar.value = file
   previewUrl.value = URL.createObjectURL(file)
+}
+
+async function loadNotificationPreferences() {
+  notificationPrefsError.value = ''
+  isLoadingNotificationPrefs.value = true
+  try {
+    const res = await notificationsApi.getNotificationPreferences()
+    globalEditNotificationsEnabled.value = res.data.edit_notifications_enabled
+  } catch {
+    notificationPrefsError.value = 'Не удалось загрузить настройки уведомлений.'
+  } finally {
+    isLoadingNotificationPrefs.value = false
+  }
+}
+
+async function toggleGlobalEditNotifications() {
+  notificationPrefsError.value = ''
+  isSavingNotificationPrefs.value = true
+  const nextValue = !globalEditNotificationsEnabled.value
+  try {
+    const res = await notificationsApi.updateNotificationPreferences(nextValue)
+    globalEditNotificationsEnabled.value = res.data.edit_notifications_enabled
+  } catch {
+    notificationPrefsError.value = 'Не удалось сохранить настройки уведомлений.'
+  } finally {
+    isSavingNotificationPrefs.value = false
+  }
 }
 
 async function saveProfile() {

@@ -1,6 +1,7 @@
 from django.db import models
 
 from common_utils.orm.mixins import AutoDateMixin
+from docs.models import Document
 from users.models import User
 
 
@@ -47,3 +48,49 @@ class PushSubscription(AutoDateMixin):
 
     def __str__(self) -> str:
         return f'{self.user_id} → {self.endpoint[:60]}'
+
+
+class UserNotificationSettings(AutoDateMixin):
+    """Owner-wide notification preferences."""
+
+    user = models.OneToOneField(
+        User,
+        on_delete=models.CASCADE,
+        related_name='notification_settings',
+        verbose_name='Пользователь',
+    )
+    edit_notifications_enabled = models.BooleanField(
+        default=True,
+        db_default=True,
+        verbose_name='Уведомления о редактировании документов',
+    )
+
+    class Meta:
+        verbose_name = 'Настройки уведомлений пользователя'
+        verbose_name_plural = 'Настройки уведомлений пользователей'
+
+    def __str__(self) -> str:
+        return f'Настройки уведомлений {self.user}'
+
+
+class DocumentNotificationSettings(AutoDateMixin):
+    """Per-document notification preferences for document owners."""
+
+    document = models.OneToOneField(
+        Document,
+        on_delete=models.CASCADE,
+        related_name='notification_settings',
+        verbose_name='Документ',
+    )
+    edit_notifications_enabled = models.BooleanField(
+        default=True,
+        db_default=True,
+        verbose_name='Уведомления о редактировании документа',
+    )
+
+    class Meta:
+        verbose_name = 'Настройки уведомлений документа'
+        verbose_name_plural = 'Настройки уведомлений документов'
+
+    def __str__(self) -> str:
+        return f'Настройки уведомлений документа {self.document_id}'

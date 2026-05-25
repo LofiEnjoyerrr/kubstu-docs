@@ -26,6 +26,7 @@ class DocumentConsumer(AsyncWebsocketConsumer):
         # know who to notify (owner) and whether to skip (self-edit).
         self.doc_owner_id: int | None = None
         self.doc_title: str = ''
+        self.edit_notification_sent = False
 
         if not await self._check_access():
             await self.close(code=4003)
@@ -120,17 +121,17 @@ class DocumentConsumer(AsyncWebsocketConsumer):
             **self.user_info,
         })
 
-        # Notify the document owner that someone else is editing.
-        # ``enqueue_edit_notification`` handles the 15-min throttle and the
-        # self-edit skip internally so we just enqueue unconditionally for
-        # any authenticated editor. The task name lives on the Celery
-        # workers; this call is fire-and-forget.
+        # Notify the document owner only on the first edit in this WebSocket
+        # session. Reopening the document creates a fresh consumer instance,
+        # so the next edit after reconnect can notify again.
         user = self.user
         if (
             user.is_authenticated
             and self.doc_owner_id is not None
             and self.doc_owner_id != user.pk
+            and not self.edit_notification_sent
         ):
+            self.edit_notification_sent = True
             try:
                 enqueue_edit_notification(
                     owner_id=self.doc_owner_id,

@@ -2,11 +2,10 @@
 Celery tasks for sending Web Push notifications.
 
 Triggers (from ``realtime.consumers.DocumentConsumer``) call
-:func:`notify_document_edit` with a short delay — the task applies a
-per-(owner, doc, editor) throttle backed by Redis cache and, if not
-throttled, fans the push out to every subscription the owner has
-registered. Dead subscriptions (HTTP 410 from the push service) are
-pruned on the way out.
+:func:`notify_document_edit` with a short delay. The WebSocket consumer
+decides when an editing session should notify; this task only fans the
+push out to every subscription the owner has registered. Dead
+subscriptions (HTTP 410 from the push service) are pruned on the way out.
 """
 
 from __future__ import annotations
@@ -17,28 +16,38 @@ from typing import Any
 
 from celery import shared_task
 from django.conf import settings
-from django.core.cache import cache
 from pywebpush import WebPushException, webpush
 
-from notifications.models import PushSubscription
+from notifications.models import (
+    DocumentNotificationSettings,
+    PushSubscription,
+    UserNotificationSettings,
+)
 
 logger = logging.getLogger(__name__)
-
-
-# 15-minute freeze between pushes to the same owner for the same
-# (document, editor) pair. The user explicitly asked for this — without
-# it a typing session would flood notifications.
-EDIT_NOTIFICATION_THROTTLE_SECONDS = 15 * 60
-
-
-def _throttle_key(owner_id: int, doc_id: int, editor_id: int) -> str:
-    return f'push:edit-throttle:{owner_id}:{doc_id}:{editor_id}'
 
 
 def _vapid_claims() -> dict[str, str]:
     """The ``sub`` claim must be a mailto:/https: URI identifying the sender."""
     sub = getattr(settings, 'VAPID_CLAIM_SUB', '') or 'mailto:admin@example.com'
     return {'sub': sub}
+
+
+def edit_notifications_enabled(owner_id: int, doc_id: int) -> bool:
+    """Return whether edit notifications are enabled for this owner/document."""
+    if UserNotificationSettings.objects.filter(
+        user_id=owner_id,
+        edit_notifications_enabled=False,
+    ).exists():
+        return False
+
+    if DocumentNotificationSettings.objects.filter(
+        document_id=doc_id,
+        edit_notifications_enabled=False,
+    ).exists():
+        return False
+
+    return True
 
 
 @shared_task(name='notifications.notify_document_edit')
@@ -53,24 +62,20 @@ def notify_document_edit(
     """
     Push "user X started editing your document" to ``owner_id``.
 
-    Returns a short status string for observability — ``'throttled'``,
+    Returns a short status string for observability — ``'disabled'``,
     ``'no-subscriptions'``, or ``'sent:N'`` where N is the count of
     subscriptions the push reached.
     """
     if owner_id == editor_id:
         return 'self-edit'
 
+    if not edit_notifications_enabled(owner_id, doc_id):
+        return 'disabled'
+
     private_key = getattr(settings, 'VAPID_PRIVATE_KEY', '')
     if not private_key:
         logger.warning('VAPID_PRIVATE_KEY is not configured; skipping push')
         return 'no-vapid-key'
-
-    key = _throttle_key(owner_id, doc_id, editor_id)
-    # ``cache.add`` is atomic: it succeeds only if the key is absent,
-    # which is exactly the "first edit in the window wins" semantics we
-    # want. Subsequent edits within 15 min return False and short-circuit.
-    if not cache.add(key, '1', timeout=EDIT_NOTIFICATION_THROTTLE_SECONDS):
-        return 'throttled'
 
     subs = list(PushSubscription.objects.filter(user_id=owner_id))
     if not subs:

@@ -1,6 +1,10 @@
 from rest_framework import serializers
 
-from notifications.models import PushSubscription
+from notifications.models import (
+    DocumentNotificationSettings,
+    PushSubscription,
+    UserNotificationSettings,
+)
 
 
 class PushSubscriptionSerializer(serializers.Serializer):
@@ -42,3 +46,17 @@ class PushSubscriptionSerializer(serializers.Serializer):
 
 class PushUnsubscribeSerializer(serializers.Serializer):
     endpoint = serializers.URLField(max_length=2048)
+
+
+class UserNotificationSettingsSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = UserNotificationSettings
+        fields = ('edit_notifications_enabled',)
+
+
+class DocumentNotificationSettingsSerializer(serializers.ModelSerializer):
+    document_id = serializers.ReadOnlyField(source='document.id')
+
+    class Meta:
+        model = DocumentNotificationSettings
+        fields = ('document_id', 'edit_notifications_enabled')
