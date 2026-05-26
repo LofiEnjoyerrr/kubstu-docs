@@ -10,6 +10,7 @@ export interface User {
   last_login: string | null
   avatar: string | null
   color: string
+  is_favorite?: boolean
 }
 
 export interface PageLayout {
@@ -33,6 +34,8 @@ export interface Document extends PageLayout, PageSettings {
   title: string
   content: string
   is_public: boolean
+  status_text: string
+  status_color: string
   owner: string
   owner_id: number
   dt_created: string
@@ -47,6 +50,7 @@ export interface DocumentAccess {
   last_name: string
   avatar: string | null
   color: string
+  is_favorite?: boolean
   role: 'viewer' | 'editor'
   dt_created: string
   dt_updated: string

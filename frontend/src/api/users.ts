@@ -1,6 +1,14 @@
 import apiClient from './client'
 import type { User } from '../types'
 
+export interface PaginatedUsers {
+  count: number
+  page: number
+  page_size: number
+  total_pages: number
+  results: User[]
+}
+
 export const login = (username: string, password: string) =>
   apiClient.post('/api/users/login/', { username, password })
 
@@ -35,3 +43,12 @@ export const confirmPasswordReset = (token: string, password: string) =>
 
 export const searchUsers = (q: string) =>
   apiClient.get<User[]>('/api/users/search/', { params: { q } })
+
+export const getFavoriteUsers = (params: { q?: string; page?: number; page_size?: number } = {}) =>
+  apiClient.get<PaginatedUsers>('/api/users/favorites/', { params })
+
+export const addFavoriteUser = (userId: number) =>
+  apiClient.post<User>('/api/users/favorites/', { user_id: userId })
+
+export const removeFavoriteUser = (userId: number) =>
+  apiClient.delete(`/api/users/favorites/${userId}/`)

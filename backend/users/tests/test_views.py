@@ -1,7 +1,7 @@
 import pytest
 from django.urls import reverse
 
-from users.models import PasswordResetRequest, RegisterRequest, User
+from users.models import FavoriteUser, PasswordResetRequest, RegisterRequest, User
 from users.tests.factories import (
     PasswordResetRequestFactory,
     RegisterRequestFactory,
@@ -172,6 +172,20 @@ def test_search_excludes_self_and_returns_matches(auth_client, user):
 
 
 @pytest.mark.django_db
+def test_search_matches_email_and_marks_favorites(auth_client, user):
+    favorite = UserFactory(username='favorite_user', email='shared@example.com')
+    UserFactory(username='other_user', email='shared-other@example.com')
+    FavoriteUser.objects.create(owner=user, user=favorite)
+
+    response = auth_client.get(reverse('users_search'), {'q': 'shared'})
+
+    assert response.status_code == 200
+    by_username = {u['username']: u for u in response.data}
+    assert by_username['favorite_user']['is_favorite'] is True
+    assert by_username['other_user']['is_favorite'] is False
+
+
+@pytest.mark.django_db
 def test_search_requires_auth(api_client):
     response = api_client.get(reverse('users_search'), {'q': 'alice'})
     assert response.status_code in (401, 403)
@@ -180,6 +194,39 @@ def test_search_requires_auth(api_client):
 @pytest.mark.django_db
 def test_search_validates_empty_query(auth_client):
     response = auth_client.get(reverse('users_search'), {'q': ''})
+    assert response.status_code == 400
+
+
+@pytest.mark.django_db
+def test_favorites_add_list_search_and_delete(auth_client, user):
+    first = UserFactory(username='alpha', email='alpha@example.com')
+    second = UserFactory(username='beta', email='beta@example.com')
+
+    response = auth_client.post(reverse('users_favorites'), {'user_id': first.id}, format='json')
+    assert response.status_code == 201
+    assert response.data['is_favorite'] is True
+
+    auth_client.post(reverse('users_favorites'), {'user_id': second.id}, format='json')
+
+    response = auth_client.get(reverse('users_favorites'), {'page': 1, 'page_size': 1})
+    assert response.status_code == 200
+    assert response.data['count'] == 2
+    assert response.data['total_pages'] == 2
+    assert len(response.data['results']) == 1
+
+    response = auth_client.get(reverse('users_favorites'), {'q': 'beta@example.com'})
+    assert response.status_code == 200
+    assert [u['username'] for u in response.data['results']] == ['beta']
+
+    response = auth_client.delete(reverse('users_favorite_detail', args=[first.id]))
+    assert response.status_code == 204
+    assert not FavoriteUser.objects.filter(owner=user, user=first).exists()
+
+
+@pytest.mark.django_db
+def test_favorites_reject_self(auth_client, user):
+    response = auth_client.post(reverse('users_favorites'), {'user_id': user.id}, format='json')
+
     assert response.status_code == 400
 
 

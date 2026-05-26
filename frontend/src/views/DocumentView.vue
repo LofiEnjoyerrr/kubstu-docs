@@ -186,6 +186,8 @@
           :editable="canEdit"
           :doc-id="docId"
           :doc-title="doc?.title"
+          :status-text="docStatusText"
+          :status-color="docStatusColor"
           :page-layout="pageLayout"
           :header-content="headerContent"
           :footer-content="footerContent"
@@ -196,6 +198,7 @@
           @selection-update="onSelectionUpdate"
           @comment-positions-changed="onCommentPositionsChanged"
           @docx-imported="onDocxImported"
+          @update-document-status="onUpdateDocumentStatus"
           @update-page-layout="onUpdatePageLayout"
           @update-header-content="onUpdateHeaderContent"
           @update-footer-content="onUpdateFooterContent"
@@ -295,6 +298,8 @@ const editableTitle = ref('')
 const myRole = ref<'owner' | 'editor' | 'viewer' | null>(null)
 const docNotificationsEnabled = ref(true)
 const isSavingDocNotifications = ref(false)
+const docStatusText = ref('')
+const docStatusColor = ref('#2563eb')
 
 const pageLayout = ref<PageLayout>({
   page_width: 816,
@@ -359,6 +364,8 @@ onMounted(async () => {
   try {
     doc.value = await docsStore.fetchDocument(docId.value)
     editableTitle.value = doc.value.title
+    docStatusText.value = doc.value.status_text || ''
+    docStatusColor.value = doc.value.status_color || '#2563eb'
 
     // Hydrate page layout + header/footer from the document
     pageLayout.value = {
@@ -448,6 +455,15 @@ onMounted(async () => {
     socket.onFullReplace((data) => {
       editorRef.value?.applyRemote(data.content)
       if (doc.value) doc.value.content = JSON.stringify(data.content)
+    })
+
+    socket.onDocumentStatus((data) => {
+      docStatusText.value = data.status_text
+      docStatusColor.value = data.status_color
+      if (doc.value) {
+        doc.value.status_text = data.status_text
+        doc.value.status_color = data.status_color
+      }
     })
 
     socket.onPageLayout((layout) => {
@@ -741,6 +757,29 @@ function onUpdateFooterContent(json: unknown) {
   }, 600)
 }
 
+async function onUpdateDocumentStatus(status: { status_text: string; status_color: string }) {
+  if (!canEdit.value) return
+  const text = status.status_text.slice(0, 30)
+  const color = /^#[0-9a-fA-F]{6}$/.test(status.status_color) ? status.status_color : '#2563eb'
+  docStatusText.value = text
+  docStatusColor.value = color
+  if (doc.value) {
+    doc.value.status_text = text
+    doc.value.status_color = color
+  }
+  try {
+    const updated = await docsApi.updateDocument(docId.value, {
+      status_text: text,
+      status_color: color,
+    })
+    doc.value = updated.data
+    docStatusText.value = updated.data.status_text
+    docStatusColor.value = updated.data.status_color
+  } catch (err) {
+    console.error('Failed to save document status', err)
+  }
+}
+
 function showSaved() {
   isSaving.value = true
   setTimeout(() => {
@@ -804,7 +843,12 @@ async function askDelete() {
 
 watch(
   () => docsStore.currentDocument,
-  (d) => { if (d) doc.value = d },
+  (d) => {
+    if (!d) return
+    doc.value = d
+    docStatusText.value = d.status_text || ''
+    docStatusColor.value = d.status_color || '#2563eb'
+  },
 )
 </script>
 

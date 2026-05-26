@@ -22,6 +22,20 @@ class Document(AutoDateMixin):
         verbose_name='Версия',
     )
 
+    status_text = models.CharField(
+        max_length=30,
+        blank=True,
+        default='',
+        db_default='',
+        verbose_name='Статус документа',
+    )
+    status_color = models.CharField(
+        max_length=7,
+        default='#2563eb',
+        db_default='#2563eb',
+        verbose_name='Цвет статуса',
+    )
+
     page_width = models.PositiveIntegerField(
         default=816,
         db_default=816,

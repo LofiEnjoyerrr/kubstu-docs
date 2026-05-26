@@ -1,4 +1,7 @@
+from math import ceil
+
 from django.contrib.auth import login, logout
+from django.db.models import Q
 from drf_spectacular.types import OpenApiTypes
 from drf_spectacular.utils import OpenApiResponse, extend_schema, OpenApiExample
 from rest_framework import status
@@ -13,11 +16,13 @@ from users.constants import (
     PASSWORD_RESET_REQUEST_MESSAGE,
     PASSWORD_RESET_REQUEST_LIFETIME,
 )
-from users.models import User
+from users.models import FavoriteUser, User
 from users.serializers.request import (
     LoginSerializer,
     RegisterSerializer,
     EmailVerifySerializer,
+    FavoriteUserCreateSerializer,
+    FavoriteUserSearchSerializer,
     UserSearchSerializer,
     UserUpdateSerializer,
     PasswordResetRequestSerializer,
@@ -201,9 +206,90 @@ class UserSearchAPIView(APIView):
         serializer.is_valid(raise_exception=True)
 
         query = serializer.validated_data['q']
-        users = User.objects.filter(username__icontains=query).exclude(pk=request.user.pk)[:20]
+        users = list(
+            User.objects.filter(Q(username__icontains=query) | Q(email__icontains=query))
+            .exclude(pk=request.user.pk)
+            .order_by('username', 'email')[:20]
+        )
+        favorite_user_ids = set(
+            FavoriteUser.objects.filter(
+                owner=request.user,
+                user_id__in=[user.id for user in users],
+            ).values_list('user_id', flat=True)
+        )
 
-        return Response(data=UserSerializer(users, many=True).data, status=status.HTTP_200_OK)
+        return Response(
+            data=UserSerializer(users, many=True, context={'favorite_user_ids': favorite_user_ids}).data,
+            status=status.HTTP_200_OK,
+        )
+
+
+class FavoriteUsersAPIView(APIView):
+    permission_classes = [IsAuthenticated]
+
+    @extend_schema(
+        parameters=[FavoriteUserSearchSerializer],
+        responses={status.HTTP_200_OK: UserSerializer(many=True)},
+    )
+    def get(self, request):
+        serializer = FavoriteUserSearchSerializer(data=request.query_params)
+        serializer.is_valid(raise_exception=True)
+
+        query = serializer.validated_data['q'].strip()
+        page = serializer.validated_data['page']
+        page_size = serializer.validated_data['page_size']
+
+        users = User.objects.filter(favored_by__owner=request.user).exclude(pk=request.user.pk)
+        if query:
+            users = users.filter(Q(username__icontains=query) | Q(email__icontains=query))
+        users = users.order_by('username', 'email').distinct()
+
+        count = users.count()
+        total_pages = max(1, ceil(count / page_size)) if count else 1
+        page = min(page, total_pages)
+        offset = (page - 1) * page_size
+        page_users = list(users[offset:offset + page_size])
+
+        return Response(
+            data={
+                'count': count,
+                'page': page,
+                'page_size': page_size,
+                'total_pages': total_pages,
+                'results': UserSerializer(
+                    page_users,
+                    many=True,
+                    context={'favorite_user_ids': {user.id for user in page_users}},
+                ).data,
+            },
+            status=status.HTTP_200_OK,
+        )
+
+    @extend_schema(
+        request=FavoriteUserCreateSerializer,
+        responses={status.HTTP_201_CREATED: UserSerializer()},
+    )
+    def post(self, request):
+        serializer = FavoriteUserCreateSerializer(data=request.data, context={'request': request})
+        serializer.is_valid(raise_exception=True)
+
+        favorite = serializer.save()
+        return Response(
+            data=UserSerializer(
+                favorite.user,
+                context={'favorite_user_ids': {favorite.user_id}},
+            ).data,
+            status=status.HTTP_201_CREATED,
+        )
+
+
+class FavoriteUserDetailAPIView(APIView):
+    permission_classes = [IsAuthenticated]
+
+    def delete(self, request, user_id):
+        FavoriteUser.objects.filter(owner=request.user, user_id=user_id).delete()
+
+        return Response(status=status.HTTP_204_NO_CONTENT)
 
 
 class PasswordResetAPIView(APIView):

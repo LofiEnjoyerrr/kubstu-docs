@@ -5,6 +5,8 @@
       :editor="editor"
       :doc-id="docId"
       :doc-title="docTitle"
+      :status-text="statusText"
+      :status-color="statusColor"
       :page-layout="pageLayout"
       :show-page-numbers="showPageNumbers"
       :page-number-start="pageNumberStart"
@@ -14,6 +16,7 @@
       :footer-json="latestFooterJson"
       :paragraph-attrs="currentParagraphAttrs"
       @docx-imported="payload => emit('docxImported', payload)"
+      @update-document-status="status => emit('updateDocumentStatus', status)"
       @update-page-layout="layout => emit('updatePageLayout', layout)"
       @toggle-header="toggleHeader"
       @toggle-footer="toggleFooter"
@@ -144,6 +147,8 @@ const props = defineProps<{
   editable?: boolean
   docId?: number
   docTitle?: string
+  statusText?: string
+  statusColor?: string
   pageLayout: PageLayout
   headerContent?: string
   footerContent?: string
@@ -156,6 +161,7 @@ const emit = defineEmits<{
   selectionUpdate: [from: number, to: number, text: string]
   commentPositionsChanged: [payload: { updated: Array<{ id: number; from: number; to: number; quote: string }>; deleted: number[] }]
   docxImported: [payload: { content: unknown }]
+  updateDocumentStatus: [status: { status_text: string; status_color: string }]
   updatePageLayout: [layout: Partial<PageLayout> & {
     header_content?: string
     footer_content?: string

@@ -33,6 +33,28 @@ class User(AbstractUser, AutoDateMixin):
     )
 
 
+class FavoriteUser(AutoDateMixin):
+    owner = models.ForeignKey(
+        User,
+        on_delete=models.CASCADE,
+        related_name='favorite_users',
+    )
+    user = models.ForeignKey(
+        User,
+        on_delete=models.CASCADE,
+        related_name='favored_by',
+    )
+
+    class Meta:
+        constraints = [
+            models.UniqueConstraint(fields=['owner', 'user'], name='unique_owner_favorite_user'),
+        ]
+        ordering = ['user__username', 'user__email']
+
+    def __str__(self):
+        return f'{self.owner} -> {self.user}'
+
+
 class RegisterRequest(AutoDateMixin):
     class RegisterRequestStatus(models.TextChoices):
         WAIT = 'wait', 'Ожидание'

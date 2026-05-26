@@ -1,8 +1,10 @@
+import re
+
 from rest_framework import serializers
 from rest_framework.exceptions import ValidationError
 
 from docs.models import Document, DocumentAccess, Comment
-from users.models import User
+from users.models import FavoriteUser, User
 
 
 class GetDocumentSerializer(serializers.ModelSerializer):
@@ -16,6 +18,8 @@ class GetDocumentSerializer(serializers.ModelSerializer):
             'title',
             'content',
             'is_public',
+            'status_text',
+            'status_color',
             'owner',
             'owner_id',
             'page_width',
@@ -52,6 +56,8 @@ class PatchDocumentSerializer(serializers.ModelSerializer):
             'title',
             'content',
             'is_public',
+            'status_text',
+            'status_color',
             'page_width',
             'page_height',
             'margin_top',
@@ -67,6 +73,8 @@ class PatchDocumentSerializer(serializers.ModelSerializer):
             'title': {'required': False},
             'content': {'required': False},
             'is_public': {'required': False},
+            'status_text': {'required': False, 'allow_blank': True, 'max_length': 30},
+            'status_color': {'required': False},
             'page_width': {'required': False},
             'page_height': {'required': False},
             'margin_top': {'required': False},
@@ -106,6 +114,17 @@ class PatchDocumentSerializer(serializers.ModelSerializer):
     validate_margin_bottom = _validate_margin
     validate_margin_left = _validate_margin
 
+    def validate_status_text(self, v):
+        v = (v or '').strip()
+        if len(v) > 30:
+            raise ValidationError('Статус должен быть не длиннее 30 символов')
+        return v
+
+    def validate_status_color(self, v):
+        if not re.match(r'^#[0-9a-fA-F]{6}$', v or ''):
+            raise ValidationError('Цвет статуса должен быть в формате #RRGGBB')
+        return v.lower()
+
 
 class DocumentAccessSerializer(serializers.ModelSerializer):
     user_id = serializers.ReadOnlyField(source='user.id')
@@ -114,6 +133,7 @@ class DocumentAccessSerializer(serializers.ModelSerializer):
     last_name = serializers.ReadOnlyField(source='user.last_name')
     avatar = serializers.ImageField(source='user.avatar', read_only=True)
     color = serializers.ReadOnlyField(source='user.color')
+    is_favorite = serializers.SerializerMethodField()
 
     class Meta:
         model = DocumentAccess
@@ -125,10 +145,22 @@ class DocumentAccessSerializer(serializers.ModelSerializer):
             'last_name',
             'avatar',
             'color',
+            'is_favorite',
             'role',
             'dt_created',
             'dt_updated',
         )
+
+    def get_is_favorite(self, obj):
+        favorite_user_ids = self.context.get('favorite_user_ids')
+        if favorite_user_ids is not None:
+            return obj.user_id in favorite_user_ids
+
+        request = self.context.get('request')
+        if not request or not request.user.is_authenticated:
+            return False
+
+        return FavoriteUser.objects.filter(owner=request.user, user=obj.user).exists()
 
 
 class PostDocumentAccessSerializer(serializers.Serializer):

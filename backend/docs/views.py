@@ -30,6 +30,7 @@ from docs.serializers import (
     UpdateCommentSerializer,
 )
 from docs.selectors import get_user_documents, get_user_opened_documents
+from users.models import FavoriteUser
 
 
 def _broadcast_to_doc(doc_id: int, event: dict) -> None:
@@ -114,14 +115,20 @@ class DocumentsRetrieveUpdateAPIView(APIView):
     def patch(self, request, pk):
         document = _get_document_or_404(pk)
 
-        # Editors may patch content / headers / footers (e.g. DOCX import).
-        # All other fields (title / is_public / page layout) are owner-only.
+        # Editors may patch content / headers / footers (e.g. DOCX import)
+        # and the visible document status. Everything else is owner-only.
         requested_fields = set(request.data.keys())
 
         is_owner = document.owner == request.user
 
         # Editor-permitted fields. Anything else is owner-only.
-        editor_fields = {'content', 'header_content', 'footer_content'}
+        editor_fields = {
+            'content',
+            'header_content',
+            'footer_content',
+            'status_text',
+            'status_color',
+        }
 
         if not is_owner:
             if not requested_fields.issubset(editor_fields):
@@ -136,6 +143,7 @@ class DocumentsRetrieveUpdateAPIView(APIView):
         serializer = PatchDocumentSerializer(document, data=request.data, partial=True)
         serializer.is_valid(raise_exception=True)
         content_changed = 'content' in serializer.validated_data
+        status_changed = bool(requested_fields & {'status_text', 'status_color'})
         page_layout_changed = bool(
             requested_fields & {
                 'page_width', 'page_height',
@@ -188,6 +196,13 @@ class DocumentsRetrieveUpdateAPIView(APIView):
                 'page_number_start': document.page_number_start,
             })
 
+        if status_changed:
+            _broadcast_to_doc(pk, {
+                'type': 'broadcast_document_status',
+                'status_text': document.status_text,
+                'status_color': document.status_color,
+            })
+
         return Response(data)
 
     def delete(self, request, pk):
@@ -208,8 +223,18 @@ class DocumentAccessListCreateAPIView(APIView):
     @extend_schema(responses=DocumentAccessSerializer(many=True))
     def get(self, request, pk):
         document = self._get_owned_document(pk, request.user)
-        accesses = document.accesses.select_related('user').all()
-        return Response(DocumentAccessSerializer(accesses, many=True).data)
+        accesses = list(document.accesses.select_related('user').all())
+        favorite_user_ids = set(
+            FavoriteUser.objects.filter(
+                owner=request.user,
+                user_id__in=[access.user_id for access in accesses],
+            ).values_list('user_id', flat=True)
+        )
+        return Response(DocumentAccessSerializer(
+            accesses,
+            many=True,
+            context={'request': request, 'favorite_user_ids': favorite_user_ids},
+        ).data)
 
     @extend_schema(request=PostDocumentAccessSerializer(), responses=DocumentAccessSerializer())
     def post(self, request, pk):
@@ -221,7 +246,7 @@ class DocumentAccessListCreateAPIView(APIView):
         serializer.is_valid(raise_exception=True)
         access = serializer.save()
         return Response(
-            DocumentAccessSerializer(access).data,
+            DocumentAccessSerializer(access, context={'request': request}).data,
             status=status.HTTP_201_CREATED,
         )
 
@@ -532,7 +557,7 @@ class DocumentAccessDetailAPIView(APIView):
         serializer = PatchDocumentAccessSerializer(access, data=request.data, partial=True)
         serializer.is_valid(raise_exception=True)
         access = serializer.save()
-        return Response(DocumentAccessSerializer(access).data)
+        return Response(DocumentAccessSerializer(access, context={'request': request}).data)
 
     @extend_schema(responses=None)
     def delete(self, request, pk, access_id):

@@ -18,6 +18,8 @@ export const updateDocument = (
   data: {
     title?: string
     is_public?: boolean
+    status_text?: string
+    status_color?: string
     content?: string
     page_width?: number
     page_height?: number

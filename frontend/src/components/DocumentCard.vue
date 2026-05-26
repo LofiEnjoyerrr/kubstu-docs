@@ -15,6 +15,15 @@
           {{ doc.title || 'Без названия' }}
         </h3>
         <p class="text-xs text-slate-500 mt-0.5">автор: {{ doc.owner }}</p>
+        <span
+          v-if="statusText"
+          class="mt-2 inline-flex max-w-full items-center gap-1 rounded-full border px-2 py-0.5 text-xs font-medium"
+          :style="statusStyle"
+          :title="statusText"
+        >
+          <span class="w-1.5 h-1.5 rounded-full shrink-0" :style="{ backgroundColor: statusColor }" />
+          <span class="truncate">{{ statusText }}</span>
+        </span>
       </div>
 
       <!-- Delete button — only the owner sees it. Stops the RouterLink
@@ -54,6 +63,15 @@ const auth = useAuthStore()
 const docsStore = useDocumentsStore()
 
 const canDelete = computed(() => auth.user?.id === props.doc.owner_id)
+const statusText = computed(() => (props.doc.status_text || '').trim())
+const statusColor = computed(() =>
+  /^#[0-9a-fA-F]{6}$/.test(props.doc.status_color ?? '') ? props.doc.status_color : '#2563eb',
+)
+const statusStyle = computed(() => ({
+  color: statusColor.value,
+  borderColor: `${statusColor.value}55`,
+  backgroundColor: `${statusColor.value}14`,
+}))
 
 async function askDelete() {
   const ok = window.confirm(`Удалить документ «${props.doc.title || 'Без названия'}»? Это действие нельзя отменить.`)

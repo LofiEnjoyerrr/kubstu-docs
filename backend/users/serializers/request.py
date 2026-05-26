@@ -12,7 +12,7 @@ from users.constants import (
     PASSWORD_RESET_TOKEN_LENGTH,
     PASSWORD_RESET_REQUEST_LIFETIME,
 )
-from users.models import User, RegisterRequest, PasswordResetRequest
+from users.models import FavoriteUser, User, RegisterRequest, PasswordResetRequest
 from users.utils import generate_username, generate_email_verify_token, generate_password_reset_token
 
 
@@ -196,6 +196,28 @@ class UserUpdateSerializer(serializers.ModelSerializer):
 
 class UserSearchSerializer(serializers.Serializer):
     q = serializers.CharField(min_length=1, max_length=150)
+
+
+class FavoriteUserSearchSerializer(serializers.Serializer):
+    q = serializers.CharField(required=False, allow_blank=True, max_length=150, default='')
+    page = serializers.IntegerField(required=False, min_value=1, default=1)
+    page_size = serializers.IntegerField(required=False, min_value=1, max_value=50, default=10)
+
+
+class FavoriteUserCreateSerializer(serializers.Serializer):
+    user_id = serializers.PrimaryKeyRelatedField(queryset=User.objects.all(), source='user')
+
+    def validate_user_id(self, value):
+        if value == self.context['request'].user:
+            raise ValidationError('Cannot add yourself to favorites')
+        return value
+
+    def create(self, validated_data):
+        favorite, _ = FavoriteUser.objects.get_or_create(
+            owner=self.context['request'].user,
+            user=validated_data['user'],
+        )
+        return favorite
 
 
 class PasswordResetRequestSerializer(serializers.Serializer):

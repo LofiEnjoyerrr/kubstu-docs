@@ -9,6 +9,7 @@ type CommentAddCallback = (comment: Comment) => void
 type CommentDeleteCallback = (commentId: number) => void
 type CommentUpdateCallback = (comment: Comment) => void
 type FullReplaceCallback = (data: { content: unknown; version: number; user_id: number | null }) => void
+type DocumentStatusCallback = (data: { status_text: string; status_color: string }) => void
 type PageLayoutCallback = (layout: PageLayout & {
   header_content?: string
   footer_content?: string
@@ -30,6 +31,7 @@ export function useDocumentSocket(docId: number) {
   let onCommentDeleteCb: CommentDeleteCallback | null = null
   let onCommentUpdateCb: CommentUpdateCallback | null = null
   let onFullReplaceCb: FullReplaceCallback | null = null
+  let onDocumentStatusCb: DocumentStatusCallback | null = null
   let onPageLayoutCb: PageLayoutCallback | null = null
   let reconnectTimer: ReturnType<typeof setTimeout> | null = null
 
@@ -122,6 +124,13 @@ export function useDocumentSocket(docId: number) {
         onFullReplaceCb?.(data as Parameters<FullReplaceCallback>[0])
         break
 
+      case 'document_status':
+        onDocumentStatusCb?.({
+          status_text: (data.status_text as string | undefined) ?? '',
+          status_color: (data.status_color as string | undefined) ?? '#2563eb',
+        })
+        break
+
       case 'page_layout':
         onPageLayoutCb?.({
           page_width: data.page_width as number,
@@ -174,6 +183,7 @@ export function useDocumentSocket(docId: number) {
   function onCommentDelete(cb: CommentDeleteCallback) { onCommentDeleteCb = cb }
   function onCommentUpdate(cb: CommentUpdateCallback) { onCommentUpdateCb = cb }
   function onFullReplace(cb: FullReplaceCallback) { onFullReplaceCb = cb }
+  function onDocumentStatus(cb: DocumentStatusCallback) { onDocumentStatusCb = cb }
   function onPageLayout(cb: PageLayoutCallback) { onPageLayoutCb = cb }
 
   function disconnect() {
@@ -196,7 +206,7 @@ export function useDocumentSocket(docId: number) {
   return {
     connect, disconnect, sendEdit, sendCursor,
     onInit, onEdit, onCursor, onUserLeave, onCommentAdd, onCommentDelete, onCommentUpdate,
-    onFullReplace, onPageLayout,
+    onFullReplace, onDocumentStatus, onPageLayout,
     collaborators, serverVersion, isConnected,
   }
 }

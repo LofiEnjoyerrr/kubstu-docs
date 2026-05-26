@@ -6,6 +6,8 @@ from .views import (
     RegisterAPIView,
     CredentialAvailableAPIView,
     EmailVerifyAPIView,
+    FavoriteUserDetailAPIView,
+    FavoriteUsersAPIView,
     MeAPIView,
     UserSearchAPIView,
     PasswordResetAPIView,
@@ -31,6 +33,8 @@ urlpatterns = [
     path('email/verify/<str:token>/', EmailVerifyAPIView.as_view(), name='users_email_verify'),
     path('me/', MeAPIView.as_view(), name='users_me'),
     path('search/', UserSearchAPIView.as_view(), name='users_search'),
+    path('favorites/', FavoriteUsersAPIView.as_view(), name='users_favorites'),
+    path('favorites/<int:user_id>/', FavoriteUserDetailAPIView.as_view(), name='users_favorite_detail'),
     path('password-reset/', PasswordResetAPIView.as_view(), name='users_password_reset'),
     path('password-reset/confirm/', PasswordResetConfirmAPIView.as_view(), name='users_password_reset_confirm'),
 ]

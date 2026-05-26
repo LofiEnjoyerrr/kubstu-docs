@@ -63,6 +63,30 @@ def test_patch_document_validate_page_number_start(value, ok):
     assert serializer.is_valid() is ok
 
 
+@pytest.mark.parametrize('value,ok', [
+    ('Готово', True),
+    ('', True),
+    ('x' * 30, True),
+    ('x' * 31, False),
+])
+def test_patch_document_validate_status_text(value, ok):
+    serializer = PatchDocumentSerializer(data={'status_text': value}, partial=True)
+    assert serializer.is_valid() is ok
+
+
+@pytest.mark.parametrize('value,ok', [
+    ('#16a34a', True),
+    ('#ABCDEF', True),
+    ('16a34a', False),
+    ('#12345', False),
+    ('#1234567', False),
+    ('red', False),
+])
+def test_patch_document_validate_status_color(value, ok):
+    serializer = PatchDocumentSerializer(data={'status_color': value}, partial=True)
+    assert serializer.is_valid() is ok
+
+
 # ---------- PostDocumentAccessSerializer ----------
 
 @pytest.mark.django_db

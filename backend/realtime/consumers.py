@@ -277,6 +277,13 @@ class DocumentConsumer(AsyncWebsocketConsumer):
             'page_number_start': event.get('page_number_start', 1),
         }))
 
+    async def broadcast_document_status(self, event):
+        await self.send(text_data=json.dumps({
+            'type': 'document_status',
+            'status_text': event.get('status_text', ''),
+            'status_color': event.get('status_color', '#2563eb'),
+        }))
+
     # ------------------------------------------------------------------ helpers
 
     def _build_user_info(self) -> dict:

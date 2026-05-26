@@ -39,12 +39,19 @@ export const useDocumentsStore = defineStore('documents', () => {
     data: {
       title?: string
       is_public?: boolean
+      status_text?: string
+      status_color?: string
       content?: string
       page_width?: number
+      page_height?: number
       margin_top?: number
       margin_right?: number
       margin_bottom?: number
       margin_left?: number
+      header_content?: string
+      footer_content?: string
+      show_page_numbers?: boolean
+      page_number_start?: number
     },
   ) {
     const res = await docsApi.updateDocument(id, data)

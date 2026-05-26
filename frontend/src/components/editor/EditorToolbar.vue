@@ -52,8 +52,6 @@
         <span>Экспорт DOCX</span>
       </button>
 
-      <Sep />
-
       <!-- Page layout / paragraph / header-footer popovers -->
       <Btn title="Параметры страницы" :active="popover === 'page'" @click="togglePop('page')">
         <svg class="w-4 h-4" fill="currentColor" viewBox="0 0 24 24"><path d="M6 2c-1.1 0-2 .9-2 2v16c0 1.1.9 2 2 2h12c1.1 0 2-.9 2-2V8l-6-6H6zm7 7V3.5L18.5 9H13z"/></svg>
@@ -78,6 +76,50 @@
 <!--      </Btn>-->
 
       <span v-if="importError" class="text-xs text-red-500 ml-2">{{ importError }}</span>
+
+      <Sep />
+
+      <div class="flex items-center gap-1.5 px-1" title="Статус документа">
+        <div class="relative">
+          <input
+            :value="statusQuery"
+            type="text"
+            maxlength="30"
+            class="toolbar-status-input"
+            placeholder="Статус"
+            autocomplete="off"
+            role="combobox"
+            :aria-expanded="statusAutocompleteOpen"
+            aria-label="Статус документа"
+            @focus="statusAutocompleteOpen = true"
+            @input="e => onStatusInput((e.target as HTMLInputElement).value)"
+            @change="applyStatusText(statusQuery)"
+            @blur="closeStatusAutocompleteSoon"
+          />
+          <div
+            v-if="statusAutocompleteOpen && filteredStatusPresets.length"
+            class="toolbar-status-menu"
+          >
+            <button
+              v-for="preset in filteredStatusPresets"
+              :key="preset.text"
+              type="button"
+              class="toolbar-status-option"
+              @mousedown.prevent="selectStatusPreset(preset)"
+            >
+              <span class="w-2 h-2 rounded-full shrink-0" :style="{ backgroundColor: preset.color }" />
+              <span class="truncate">{{ preset.text }}</span>
+            </button>
+          </div>
+        </div>
+        <input
+          :value="currentStatusColor"
+          type="color"
+          class="toolbar-status-color"
+          title="Цвет статуса"
+          @input="e => applyStatusColor((e.target as HTMLInputElement).value)"
+        />
+      </div>
     </div>
 
     <!-- ── Row 2: formatting toolbar ────────────────────────────────────────── -->
@@ -358,7 +400,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed, defineComponent, h, onMounted, onBeforeUnmount } from 'vue'
+import { ref, computed, defineComponent, h, onMounted, onBeforeUnmount, watch } from 'vue'
 import type { Editor } from '@tiptap/vue-3'
 import apiClient from '../../api/client'
 import { findReplaceKey } from './FindReplace'
@@ -369,6 +411,8 @@ const props = defineProps<{
   editor: Editor
   docId?: number
   docTitle?: string
+  statusText?: string
+  statusColor?: string
   pageLayout: PageLayout
   showPageNumbers?: boolean
   pageNumberStart?: number
@@ -389,6 +433,7 @@ const props = defineProps<{
 
 const emit = defineEmits<{
   docxImported: [payload: { content: unknown }]
+  updateDocumentStatus: [status: { status_text: string; status_color: string }]
   updatePageLayout: [layout: Partial<PageLayout> & {
     show_page_numbers?: boolean
     page_number_start?: number
@@ -412,6 +457,12 @@ const SIZES = [8, 9, 10, 11, 12, 14, 16, 18, 20, 22, 24, 26, 28, 32, 36, 40, 48,
 
 const LINE_HEIGHTS = ['1', '1.15', '1.5', '2', '2.5', '3']
 const PX_PER_MM = 96 / 25.4
+const DEFAULT_STATUS_COLOR = '#2563eb'
+const STATUS_PRESETS = [
+  { text: 'Готово', color: '#16a34a' },
+  { text: 'В работе', color: '#2563eb' },
+  { text: 'Требуются правки', color: '#ca8a04' },
+] as const
 // Note: font and size lists stay as-is — they're proper names and numbers.
 
 // ── reactive state ────────────────────────────────────────────────────────────
@@ -430,6 +481,8 @@ const replaceText = ref('')
 const caseSensitive = ref(false)
 const findResults = ref<Array<{ from: number; to: number }>>([])
 const findActive = ref(-1)
+const statusQuery = ref('')
+const statusAutocompleteOpen = ref(false)
 
 let unbindEditorUpdate: (() => void) | null = null
 
@@ -486,6 +539,21 @@ const currentFontSize = computed(() => {
 })
 const currentColor = computed(() => props.editor.getAttributes('textStyle').color ?? '#000000')
 const currentHighlight = computed(() => props.editor.getAttributes('highlight').color ?? '')
+const statusText = computed(() => props.statusText ?? '')
+const currentStatusColor = computed(() => normalizeStatusColor(props.statusColor))
+const filteredStatusPresets = computed(() => {
+  const q = statusQuery.value.trim().toLowerCase()
+  if (!q) return STATUS_PRESETS
+  return STATUS_PRESETS.filter(p => p.text.toLowerCase().includes(q))
+})
+
+watch(
+  () => props.statusText,
+  value => {
+    statusQuery.value = value ?? ''
+  },
+  { immediate: true },
+)
 
 const currentHeading = computed(() => {
   for (let lvl = 1; lvl <= 6; lvl++) {
@@ -522,6 +590,48 @@ function applyHighlight(value: string) {
 function applyLineHeight(value: string) {
   if (value) props.editor.chain().focus().setLineHeight(value).run()
   else props.editor.chain().focus().unsetLineHeight().run()
+}
+
+function normalizeStatusColor(color: string | undefined): string {
+  return /^#[0-9a-fA-F]{6}$/.test(color ?? '') ? color! : DEFAULT_STATUS_COLOR
+}
+
+function onStatusInput(raw: string) {
+  statusQuery.value = raw.slice(0, 30)
+  statusAutocompleteOpen.value = true
+}
+
+function closeStatusAutocompleteSoon() {
+  window.setTimeout(() => {
+    statusAutocompleteOpen.value = false
+  }, 120)
+}
+
+function applyStatusText(raw: string) {
+  const text = raw.trim().slice(0, 30)
+  statusQuery.value = text
+  statusAutocompleteOpen.value = false
+  const preset = STATUS_PRESETS.find(p => p.text.toLowerCase() === text.toLowerCase())
+  emit('updateDocumentStatus', {
+    status_text: text,
+    status_color: preset?.color ?? currentStatusColor.value,
+  })
+}
+
+function selectStatusPreset(preset: (typeof STATUS_PRESETS)[number]) {
+  statusQuery.value = preset.text
+  statusAutocompleteOpen.value = false
+  emit('updateDocumentStatus', {
+    status_text: preset.text,
+    status_color: preset.color,
+  })
+}
+
+function applyStatusColor(color: string) {
+  emit('updateDocumentStatus', {
+    status_text: statusQuery.value.trim().slice(0, 30),
+    status_color: normalizeStatusColor(color),
+  })
 }
 
 function setHeading(e: Event) {
@@ -861,6 +971,23 @@ const CssMmField = defineComponent({
 <style scoped>
 .toolbar-select {
   @apply h-7 px-1.5 rounded text-xs border border-slate-200 text-slate-700 bg-white focus:outline-none focus:border-primary-400;
+}
+
+.toolbar-status-input {
+  @apply h-7 w-56 px-2 rounded text-xs border border-slate-200 text-slate-700 bg-white focus:outline-none focus:border-primary-400;
+}
+
+.toolbar-status-menu {
+  @apply absolute left-0 top-full z-50 mt-1 w-64 overflow-hidden rounded-md border border-slate-200 bg-white py-1 shadow-lg;
+}
+
+.toolbar-status-option {
+  @apply flex w-full items-center gap-2 px-2 py-1.5 text-left text-xs text-slate-700 hover:bg-slate-50;
+}
+
+.toolbar-status-color {
+  @apply w-7 h-7 rounded border border-slate-200 bg-white cursor-pointer;
+  padding: 2px;
 }
 
 .file-action-btn {

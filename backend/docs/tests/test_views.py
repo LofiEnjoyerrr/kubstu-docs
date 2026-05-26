@@ -19,6 +19,7 @@ from docs.tests.factories import (
     DocumentAccessFactory,
     DocumentFactory,
 )
+from users.models import FavoriteUser
 from users.tests.factories import UserFactory
 
 
@@ -132,6 +133,30 @@ def test_editor_can_patch_content_but_not_title(
 
 
 @pytest.mark.django_db
+def test_editor_can_patch_document_status(
+    other_auth_client, document, document_access, _silence_broadcasts,
+):
+    response = other_auth_client.patch(
+        reverse('doc', args=[document.pk]),
+        {'status_text': 'Готово', 'status_color': '#16a34a'},
+        format='json',
+    )
+
+    assert response.status_code == 200
+    document.refresh_from_db()
+    assert document.status_text == 'Готово'
+    assert document.status_color == '#16a34a'
+    _silence_broadcasts.assert_called_with(
+        document.pk,
+        {
+            'type': 'broadcast_document_status',
+            'status_text': 'Готово',
+            'status_color': '#16a34a',
+        },
+    )
+
+
+@pytest.mark.django_db
 def test_public_document_does_not_grant_edit_to_unrelated_user(
     other_auth_client,
     public_document,
@@ -240,6 +265,19 @@ def test_owner_can_list_accesses(auth_client, document, other_user):
     assert response.status_code == 200
     assert len(response.data) == 1
     assert response.data[0]['username'] == other_user.username
+    assert response.data[0]['is_favorite'] is False
+
+
+@pytest.mark.django_db
+def test_owner_can_list_accesses_with_favorite_flag(auth_client, user, document, other_user):
+    DocumentAccessFactory(document=document, user=other_user, role='editor')
+    FavoriteUser.objects.create(owner=user, user=other_user)
+
+    response = auth_client.get(reverse('doc_accesses', args=[document.pk]))
+
+    assert response.status_code == 200
+    assert response.data[0]['username'] == other_user.username
+    assert response.data[0]['is_favorite'] is True
 
 
 @pytest.mark.django_db
