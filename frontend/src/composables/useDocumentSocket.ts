@@ -139,12 +139,25 @@ export function useDocumentSocket(docId: number) {
     }
   }
 
-  function sendEdit(delta: unknown, state: unknown) {
+  function sendEdit(
+    delta: unknown,
+    state: unknown,
+    options: { notifyOwner?: boolean; editNotificationSessionId?: string } = {},
+  ): boolean {
     if (ws.value?.readyState === WebSocket.OPEN) {
       ws.value.send(
-        JSON.stringify({ type: 'edit', delta, state, version: serverVersion.value }),
+        JSON.stringify({
+          type: 'edit',
+          delta,
+          state,
+          version: serverVersion.value,
+          notify_owner: options.notifyOwner === true,
+          edit_notification_session_id: options.editNotificationSessionId,
+        }),
       )
+      return true
     }
+    return false
   }
 
   function sendCursor(from: number, to: number) {

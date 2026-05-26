@@ -27,6 +27,7 @@ class DocumentConsumer(AsyncWebsocketConsumer):
         self.doc_owner_id: int | None = None
         self.doc_title: str = ''
         self.edit_notification_sent = False
+        self.notified_edit_sessions: set[str] = set()
         self.can_edit_document = False
 
         if not await self._check_access():
@@ -124,17 +125,35 @@ class DocumentConsumer(AsyncWebsocketConsumer):
             **self.user_info,
         })
 
-        # Notify the document owner only on the first edit in this WebSocket
-        # session. Reopening the document creates a fresh consumer instance,
-        # so the next edit after reconnect can notify again.
+        # Newer clients send a fresh edit_notification_session_id for every
+        # document entry. That lets the frontend decide when "the first edit
+        # after opening" begins, while the backend still deduplicates retries
+        # for the same entry. Older clients fall back to one notification per
+        # WebSocket consumer session.
+        notification_session_id = data.get('edit_notification_session_id')
+        has_client_session = (
+            isinstance(notification_session_id, str)
+            and bool(notification_session_id)
+        )
+        if has_client_session:
+            should_notify_owner = (
+                data.get('notify_owner') is True
+                and notification_session_id not in self.notified_edit_sessions
+            )
+        else:
+            should_notify_owner = not self.edit_notification_sent
+
         user = self.user
         if (
             user.is_authenticated
             and self.doc_owner_id is not None
             and self.doc_owner_id != user.pk
-            and not self.edit_notification_sent
+            and should_notify_owner
         ):
-            self.edit_notification_sent = True
+            if has_client_session:
+                self.notified_edit_sessions.add(notification_session_id)
+            else:
+                self.edit_notification_sent = True
             try:
                 enqueue_edit_notification(
                     owner_id=self.doc_owner_id,

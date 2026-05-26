@@ -325,6 +325,8 @@ const pendingQuote = ref('')
 let contentSaveTimer: ReturnType<typeof setTimeout> | null = null
 let titleSaveTimer: ReturnType<typeof setTimeout> | null = null
 let commentSyncTimer: ReturnType<typeof setTimeout> | null = null
+const editNotificationSessionId = createEditNotificationSessionId()
+const editNotificationRequested = ref(false)
 
 // Pending comment position changes to send to the backend (debounced).
 // Key = comment id, value = latest {from, to, quote} to PATCH.
@@ -500,9 +502,23 @@ function onEditorUpdate(content: unknown) {
   if (!canEdit.value) return
   if (contentSaveTimer) clearTimeout(contentSaveTimer)
   contentSaveTimer = setTimeout(() => {
-    socket.sendEdit(content, content)
+    const shouldNotifyOwner = !editNotificationRequested.value
+    const wasSent = socket.sendEdit(content, content, {
+      notifyOwner: shouldNotifyOwner,
+      editNotificationSessionId,
+    })
+    if (wasSent && shouldNotifyOwner) {
+      editNotificationRequested.value = true
+    }
     showSaved()
   }, 600)
+}
+
+function createEditNotificationSessionId(): string {
+  if (typeof crypto !== 'undefined' && 'randomUUID' in crypto) {
+    return crypto.randomUUID()
+  }
+  return `${Date.now()}-${Math.random().toString(36).slice(2)}`
 }
 
 function onSelectionUpdate(from: number, to: number, text: string) {

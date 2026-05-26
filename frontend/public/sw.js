@@ -36,6 +36,7 @@ self.addEventListener('push', (event) => {
     self.registration.showNotification(title, {
       body,
       tag,
+      renotify: true,
       icon: '/doc-icon.svg',
       badge: '/doc-icon.svg',
       // Carry the doc id through to the click handler so we can deep-link.

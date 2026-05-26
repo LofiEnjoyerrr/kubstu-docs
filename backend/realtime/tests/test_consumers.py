@@ -32,6 +32,7 @@ def _consumer(*, user_id=2):
     consumer.doc_owner_id = 1
     consumer.doc_title = 'Doc'
     consumer.edit_notification_sent = False
+    consumer.notified_edit_sessions = set()
     consumer.can_edit_document = True
 
     consumer.saved_edits = []
@@ -64,6 +65,32 @@ def test_edit_notification_is_enqueued_again_after_reconnect(mocker):
 
     async_to_sync(_consumer()._handle_edit)({'type': 'edit', 'delta': {'step': 1}})
     async_to_sync(_consumer()._handle_edit)({'type': 'edit', 'delta': {'step': 1}})
+
+    assert enqueue.call_count == 2
+
+
+def test_edit_notification_can_be_requested_again_for_new_frontend_entry(mocker):
+    enqueue = mocker.patch('realtime.consumers.enqueue_edit_notification')
+    consumer = _consumer()
+
+    async_to_sync(consumer._handle_edit)({
+        'type': 'edit',
+        'delta': {'step': 1},
+        'notify_owner': True,
+        'edit_notification_session_id': 'entry-1',
+    })
+    async_to_sync(consumer._handle_edit)({
+        'type': 'edit',
+        'delta': {'step': 2},
+        'notify_owner': True,
+        'edit_notification_session_id': 'entry-1',
+    })
+    async_to_sync(consumer._handle_edit)({
+        'type': 'edit',
+        'delta': {'step': 3},
+        'notify_owner': True,
+        'edit_notification_session_id': 'entry-2',
+    })
 
     assert enqueue.call_count == 2
 
