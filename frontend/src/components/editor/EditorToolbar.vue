@@ -11,12 +11,6 @@
 
       <Sep />
 
-      <Btn title="Очистить форматирование" @click="editor.chain().focus().clearNodes().unsetAllMarks().resetParagraphSpacing().run()">
-        <svg class="w-4 h-4" fill="currentColor" viewBox="0 0 24 24"><path d="M3.27 5L2 6.27l6.97 6.97L6.5 19h3l1.57-3.66L16.73 21 18 19.73 3.55 5.27 3.27 5zM6 5v.18l3 3V7h2v2.18l1.78 1.78L13.4 7H20V5H6z"/></svg>
-      </Btn>
-
-      <Sep />
-
       <Btn title="Найти и заменить (Ctrl+F)" :active="showFind" @click="toggleFind">
         <svg class="w-4 h-4" fill="currentColor" viewBox="0 0 24 24"><path d="M15.5 14h-.79l-.28-.27A6.471 6.471 0 0 0 16 9.5 6.5 6.5 0 1 0 9.5 16c1.61 0 3.09-.59 4.23-1.57l.27.28v.79l5 4.99L20.49 19l-4.99-5zm-6 0C7.01 14 5 11.99 5 9.5S7.01 5 9.5 5 14 7.01 14 9.5 11.99 14 9.5 14z"/></svg>
       </Btn>
@@ -31,14 +25,32 @@
         class="sr-only"
         @change="onDocxImport"
       />
-      <Btn title="Импорт DOCX" :disabled="isImporting || !docId" @click="docxInputRef?.click()">
-        <svg v-if="!isImporting" class="w-4 h-4" fill="currentColor" viewBox="0 0 24 24"><path d="M19 9h-4V3H9v6H5l7 7 7-7zM5 18v2h14v-2H5z"/></svg>
-        <svg v-else class="w-4 h-4 animate-spin" fill="none" viewBox="0 0 24 24"><circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"/><path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8H4z"/></svg>
-      </Btn>
-      <Btn title="Экспорт в DOCX" :disabled="isExporting" @click="onDocxExport">
-        <svg v-if="!isExporting" class="w-4 h-4" fill="currentColor" viewBox="0 0 24 24"><path d="M19 3H5c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h14c1.1 0 2-.9 2-2V5c0-1.1-.9-2-2-2zm-7 14l-5-5 1.41-1.41L11 14.17V7h2v7.17l2.59-2.58L17 13l-5 5z"/></svg>
-        <svg v-else class="w-4 h-4 animate-spin" fill="none" viewBox="0 0 24 24"><circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"/><path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8H4z"/></svg>
-      </Btn>
+      <button
+        type="button"
+        title="Импорт: загрузить DOCX-файл в этот документ"
+        :disabled="isImporting || !docId"
+        class="file-action-btn"
+        @click="docxInputRef?.click()"
+      >
+        <svg v-if="!isImporting" class="w-4 h-4 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 3v10m0-10 4 4m-4-4-4 4M5 13v6a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2v-6M8 17h8" />
+        </svg>
+        <svg v-else class="w-4 h-4 shrink-0 animate-spin" fill="none" viewBox="0 0 24 24"><circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"/><path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8H4z"/></svg>
+        <span>Импорт DOCX</span>
+      </button>
+      <button
+        type="button"
+        title="Экспорт: скачать текущий документ в DOCX"
+        :disabled="isExporting"
+        class="file-action-btn"
+        @click="onDocxExport"
+      >
+        <svg v-if="!isExporting" class="w-4 h-4 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 21V11m0 10 4-4m-4 4-4-4M5 11V5a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2v6M8 7h8" />
+        </svg>
+        <svg v-else class="w-4 h-4 shrink-0 animate-spin" fill="none" viewBox="0 0 24 24"><circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"/><path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8H4z"/></svg>
+        <span>Экспорт DOCX</span>
+      </button>
 
       <Sep />
 
@@ -119,6 +131,12 @@
       </Btn>
       <Btn :active="editor.isActive('subscript')" title="Нижний индекс" @click="editor.chain().focus().toggleSubscript().run()">x₂</Btn>
       <Btn :active="editor.isActive('superscript')" title="Верхний индекс" @click="editor.chain().focus().toggleSuperscript().run()">x²</Btn>
+      <Btn title="Очистить форматирование" @click="editor.chain().focus().clearNodes().unsetAllMarks().resetParagraphSpacing().run()">
+        <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="m7 21-4-4 10.6-10.6a2 2 0 0 1 2.8 0l1.2 1.2a2 2 0 0 1 0 2.8L7 21Z" />
+          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M11 17h10M9.5 11.5l3 3" />
+        </svg>
+      </Btn>
 
       <label class="w-7 h-7 flex items-center justify-center rounded cursor-pointer hover:bg-slate-100 transition-colors relative" title="Цвет текста">
         <span class="flex flex-col items-center gap-px">
@@ -232,12 +250,12 @@
 
     <!-- Page setup popover -->
     <div v-if="popover === 'page'" class="px-4 py-3 border-t border-slate-100 bg-slate-50 flex flex-wrap items-end gap-4 text-xs">
-      <NumberField label="Ширина (px)" :value="pageLayout.page_width" :min="320" :max="2400" @change="v => updateLayout({ page_width: v })" />
-      <NumberField label="Высота (px)" :value="pageLayout.page_height" :min="320" :max="3600" @change="v => updateLayout({ page_height: v })" />
-      <NumberField label="Отступ сверху"    :value="pageLayout.margin_top"    :min="0" :max="600" @change="v => updateLayout({ margin_top: v })" />
-      <NumberField label="Отступ справа"  :value="pageLayout.margin_right"  :min="0" :max="600" @change="v => updateLayout({ margin_right: v })" />
-      <NumberField label="Отступ снизу" :value="pageLayout.margin_bottom" :min="0" :max="600" @change="v => updateLayout({ margin_bottom: v })" />
-      <NumberField label="Отступ слева"   :value="pageLayout.margin_left"   :min="0" :max="600" @change="v => updateLayout({ margin_left: v })" />
+      <MmField label="Ширина" :value="pageLayout.page_width" :min="320" :max="2400" @change="v => updateLayout({ page_width: v })" />
+      <MmField label="Высота" :value="pageLayout.page_height" :min="320" :max="3600" @change="v => updateLayout({ page_height: v })" />
+      <MmField label="Отступ сверху" :value="pageLayout.margin_top" :min="0" :max="600" @change="v => updateLayout({ margin_top: v })" />
+      <MmField label="Отступ справа" :value="pageLayout.margin_right" :min="0" :max="600" @change="v => updateLayout({ margin_right: v })" />
+      <MmField label="Отступ снизу" :value="pageLayout.margin_bottom" :min="0" :max="600" @change="v => updateLayout({ margin_bottom: v })" />
+      <MmField label="Отступ слева" :value="pageLayout.margin_left" :min="0" :max="600" @change="v => updateLayout({ margin_left: v })" />
       <div class="flex gap-2 ml-auto">
         <button type="button" class="btn-secondary btn-sm" @click="setPreset('a4')">A4</button>
         <button type="button" class="btn-secondary btn-sm" @click="setPreset('letter')">Letter</button>
@@ -247,11 +265,11 @@
 
     <!-- Paragraph spacing popover -->
     <div v-if="popover === 'para'" class="px-4 py-3 border-t border-slate-100 bg-slate-50 flex flex-wrap items-end gap-4 text-xs">
-      <PxField label="Отступ сверху"    :value="paragraphAttrs.marginTop"    @change="v => $emit('setParagraphAttr', 'marginTop', v)" />
-      <PxField label="Отступ снизу" :value="paragraphAttrs.marginBottom" @change="v => $emit('setParagraphAttr', 'marginBottom', v)" />
-      <PxField label="Отступ слева"   :value="paragraphAttrs.marginLeft"   @change="v => $emit('setParagraphAttr', 'marginLeft', v)" />
-      <PxField label="Отступ справа"  :value="paragraphAttrs.marginRight"  @change="v => $emit('setParagraphAttr', 'marginRight', v)" />
-      <PxField label="Отступ первой строки" :value="paragraphAttrs.textIndent" @change="v => $emit('setParagraphAttr', 'textIndent', v)" />
+      <CssMmField label="Отступ сверху" :value="paragraphAttrs.marginTop" @change="v => $emit('setParagraphAttr', 'marginTop', v)" />
+      <CssMmField label="Отступ снизу" :value="paragraphAttrs.marginBottom" @change="v => $emit('setParagraphAttr', 'marginBottom', v)" />
+      <CssMmField label="Отступ слева" :value="paragraphAttrs.marginLeft" @change="v => $emit('setParagraphAttr', 'marginLeft', v)" />
+      <CssMmField label="Отступ справа" :value="paragraphAttrs.marginRight" @change="v => $emit('setParagraphAttr', 'marginRight', v)" />
+      <CssMmField label="Отступ первой строки" :value="paragraphAttrs.textIndent" @change="v => $emit('setParagraphAttr', 'textIndent', v)" />
       <button type="button" class="btn-ghost btn-sm" @click="resetParagraph">Сбросить абзац</button>
     </div>
 
@@ -371,6 +389,7 @@ const FONTS = [
 const SIZES = [8, 9, 10, 11, 12, 14, 16, 18, 20, 22, 24, 26, 28, 32, 36, 40, 48, 60, 72]
 
 const LINE_HEIGHTS = ['1', '1.15', '1.5', '2', '2.5', '3']
+const PX_PER_MM = 96 / 25.4
 // Note: font and size lists stay as-is — they're proper names and numbers.
 
 // ── reactive state ────────────────────────────────────────────────────────────
@@ -743,24 +762,66 @@ const NumberField = defineComponent({
   },
 })
 
-const PxField = defineComponent({
+function pxToMm(px: number): number {
+  return Math.round((px / PX_PER_MM) * 10) / 10
+}
+
+function mmToPx(mm: number): number {
+  return Math.round(mm * PX_PER_MM)
+}
+
+function cssLengthToPx(value: string | undefined): number | null {
+  const raw = (value ?? '').toString().trim()
+  if (!raw) return null
+  const n = parseFloat(raw)
+  if (isNaN(n)) return null
+  if (raw.endsWith('mm')) return mmToPx(n)
+  return n
+}
+
+const MmField = defineComponent({
+  props: { label: String, value: Number, min: Number, max: Number },
+  emits: ['change'],
+  setup(p, { emit }) {
+    return () =>
+      h('div', { class: 'flex flex-col gap-1' }, [
+        h('label', { class: 'text-slate-600 font-medium' }, `${p.label}, мм`),
+        h('input', {
+          type: 'number',
+          min: p.min !== undefined ? pxToMm(p.min) : undefined,
+          max: p.max !== undefined ? pxToMm(p.max) : undefined,
+          step: 0.1,
+          value: p.value !== undefined ? pxToMm(p.value) : '',
+          class: 'input w-24 h-8',
+          onChange: (e: Event) => {
+            const mm = (e.target as HTMLInputElement).valueAsNumber
+            if (isNaN(mm)) return
+            const px = mmToPx(mm)
+            emit('change', Math.min(p.max ?? 9999, Math.max(p.min ?? 0, px)))
+          },
+        }),
+      ])
+  },
+})
+
+const CssMmField = defineComponent({
   props: { label: String, value: String },
   emits: ['change'],
   setup(p, { emit }) {
     return () => {
-      const numeric = parseInt((p.value ?? '').toString(), 10)
+      const px = cssLengthToPx(p.value)
       return h('div', { class: 'flex flex-col gap-1' }, [
-        h('label', { class: 'text-slate-600 font-medium' }, p.label),
+        h('label', { class: 'text-slate-600 font-medium' }, `${p.label}, мм`),
         h('div', { class: 'flex items-center gap-1' }, [
           h('input', {
             type: 'number',
-            step: 4,
-            value: isNaN(numeric) ? '' : numeric,
+            step: 0.1,
+            value: px === null ? '' : pxToMm(px),
             class: 'input w-20 h-8',
             onChange: (e: Event) => {
-              const n = (e.target as HTMLInputElement).valueAsNumber
-              if (isNaN(n)) emit('change', '')
-              else emit('change', `${n}px`)
+              const mm = (e.target as HTMLInputElement).valueAsNumber
+              if (isNaN(mm)) emit('change', '')
+              else emit('change', `${mmToPx(mm)}px`)
             },
           }),
           h('button', {
@@ -778,5 +839,12 @@ const PxField = defineComponent({
 <style scoped>
 .toolbar-select {
   @apply h-7 px-1.5 rounded text-xs border border-slate-200 text-slate-700 bg-white focus:outline-none focus:border-primary-400;
+}
+
+.file-action-btn {
+  @apply h-7 px-2.5 inline-flex items-center gap-1.5 rounded border border-slate-200
+         bg-white text-xs font-medium text-slate-600 transition-colors
+         hover:bg-slate-50 hover:text-slate-900 focus:outline-none focus:border-primary-400
+         disabled:text-slate-300 disabled:cursor-not-allowed disabled:hover:bg-white;
 }
 </style>
