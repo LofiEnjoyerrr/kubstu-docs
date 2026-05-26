@@ -451,6 +451,34 @@ def test_document_owner_can_delete_others_comment(
 
 
 @pytest.mark.django_db
+def test_document_owner_can_delete_all_comments(
+    auth_client, document, other_user, _silence_broadcasts,
+):
+    own_comment = CommentFactory(document=document, author=document.owner)
+    foreign_comment = CommentFactory(document=document, author=other_user)
+
+    response = auth_client.delete(reverse('doc_comments', args=[document.pk]))
+
+    assert response.status_code == 204
+    assert not Comment.objects.filter(pk__in=[own_comment.pk, foreign_comment.pk]).exists()
+    assert _silence_broadcasts.call_count == 2
+
+
+@pytest.mark.django_db
+def test_non_owner_cannot_delete_all_comments(
+    other_auth_client, document, other_user, _silence_broadcasts,
+):
+    DocumentAccessFactory(document=document, user=other_user, role='editor')
+    comment = CommentFactory(document=document, author=other_user)
+
+    response = other_auth_client.delete(reverse('doc_comments', args=[document.pk]))
+
+    assert response.status_code == 403
+    assert Comment.objects.filter(pk=comment.pk).exists()
+    assert not _silence_broadcasts.called
+
+
+@pytest.mark.django_db
 def test_missing_comment_returns_404(auth_client, document):
     response = auth_client.delete(
         reverse('doc_comment_detail', args=[document.pk, 9999]),

@@ -1,16 +1,29 @@
 <template>
   <aside class="w-80 shrink-0 border-l border-slate-200 bg-white flex flex-col overflow-hidden">
     <!-- Header -->
-    <div class="flex items-center justify-between px-4 py-3 border-b border-slate-200 shrink-0">
+    <div class="flex items-center justify-between gap-2 px-4 py-3 border-b border-slate-200 shrink-0">
       <h3 class="font-semibold text-slate-800 text-sm">
         Комментарии
         <span v-if="comments.length" class="ml-1.5 text-xs font-normal text-slate-400">({{ comments.length }})</span>
       </h3>
-      <button class="text-slate-400 hover:text-slate-600 transition-colors" @click="$emit('close')">
-        <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12" />
-        </svg>
-      </button>
+      <div class="flex items-center gap-1">
+        <button
+          v-if="isOwner && comments.length"
+          class="h-7 px-2 inline-flex items-center gap-1 rounded border border-red-200 bg-white text-xs font-medium text-red-600 hover:bg-red-50 transition-colors"
+          title="Удалить все комментарии из документа"
+          @click="$emit('deleteAll')"
+        >
+          <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 7h8m-7 4h6m-5 4h4M5 7h14l-1 14H6L5 7Zm3 0V4h8v3" />
+          </svg>
+          Все
+        </button>
+        <button class="text-slate-400 hover:text-slate-600 transition-colors" @click="$emit('close')">
+          <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12" />
+          </svg>
+        </button>
+      </div>
     </div>
 
     <!-- Empty state -->
@@ -84,6 +97,7 @@ defineEmits<{
   close: []
   jump: [from: number, to: number]
   delete: [commentId: number]
+  deleteAll: []
 }>()
 
 function canDelete(comment: Comment): boolean {

@@ -72,3 +72,6 @@ export const updateComment = (
 
 export const deleteComment = (docId: number, commentId: number) =>
   apiClient.delete(`/api/docs/${docId}/comments/${commentId}/`)
+
+export const deleteAllComments = (docId: number) =>
+  apiClient.delete(`/api/docs/${docId}/comments/`)

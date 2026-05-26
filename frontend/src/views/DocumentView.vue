@@ -210,6 +210,7 @@
             @close="showComments = false"
             @jump="jumpToComment"
             @delete="handleDeleteComment"
+            @delete-all="handleDeleteAllComments"
           />
         </Transition>
       </template>
@@ -568,6 +569,19 @@ async function handleDeleteComment(commentId: number) {
     applyCommentHighlights()
   } catch {
     // ignore
+  }
+}
+
+async function handleDeleteAllComments() {
+  if (myRole.value !== 'owner' || !comments.value.length) return
+  const ok = window.confirm('Удалить все комментарии из документа? Это действие нельзя отменить.')
+  if (!ok) return
+  try {
+    await docsApi.deleteAllComments(docId.value)
+    comments.value = []
+    applyCommentHighlights()
+  } catch {
+    window.alert('Не удалось удалить комментарии. Попробуйте ещё раз.')
   }
 }
 

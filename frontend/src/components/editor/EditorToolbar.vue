@@ -237,6 +237,28 @@
       <Btn v-if="editor.isActive('table')" title="Добавить строку" @click="editor.chain().focus().addRowAfter().run()">
         <svg class="w-4 h-4" fill="currentColor" viewBox="0 0 24 24"><path d="M4 4h16v7H4V4zm0 9h7v3h3v2h-3v3H4v-8zm9 4h2v-3h3v-2h-3v-3h-2v8z"/></svg>
       </Btn>
+      <Btn
+        v-if="editor.isActive('table')"
+        title="Объединить выделенные ячейки"
+        :disabled="!editor.can().mergeCells()"
+        @click="editor.chain().focus().mergeCells().run()"
+      >
+        <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 5h16v14H4V5Z" />
+          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 5v14M4 12h16M9 9l3 3-3 3M15 9l-3 3 3 3" />
+        </svg>
+      </Btn>
+      <Btn
+        v-if="editor.isActive('table')"
+        title="Разделить объединённую ячейку"
+        :disabled="!editor.can().splitCell()"
+        @click="editor.chain().focus().splitCell().run()"
+      >
+        <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 5h16v14H4V5Z" />
+          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 5v14M4 12h16M12 12 9 9m3 3-3 3m3-3 3-3m-3 3 3 3" />
+        </svg>
+      </Btn>
       <Btn v-if="editor.isActive('table')" title="Удалить столбец" @click="editor.chain().focus().deleteColumn().run()">
         <svg class="w-4 h-4" fill="currentColor" viewBox="0 0 24 24"><path d="M4 4h7v16H4V4zm10 6 2-2 2 2-2 2 2 2-2 2-2-2-2 2-2-2 2-2-2-2 2-2z"/></svg>
       </Btn>

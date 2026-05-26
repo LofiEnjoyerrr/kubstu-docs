@@ -1066,6 +1066,46 @@ onBeforeUnmount(() => {
   pointer-events: none;
 }
 
+/* Resizable images */
+.tiptap-editor .resizable-image-node {
+  display: inline-block;
+  position: relative;
+  max-width: 100%;
+  line-height: 0;
+  vertical-align: bottom;
+}
+.tiptap-editor .resizable-image-node img {
+  display: block;
+  max-width: 100%;
+  height: auto;
+}
+.tiptap-editor .resizable-image-node.ProseMirror-selectednode,
+.tiptap-editor .resizable-image-node:hover,
+.tiptap-editor .resizable-image-node.is-resizing {
+  outline: 2px solid rgba(37, 99, 235, 0.45);
+  outline-offset: 2px;
+}
+.tiptap-editor .resizable-image-handle {
+  position: absolute;
+  right: -6px;
+  bottom: -6px;
+  width: 12px;
+  height: 12px;
+  border: 2px solid #fff;
+  border-radius: 9999px;
+  background: #2563eb;
+  box-shadow: 0 1px 4px rgba(15, 23, 42, 0.35);
+  cursor: nwse-resize;
+  opacity: 0;
+  pointer-events: auto;
+  transition: opacity 0.12s ease;
+}
+.tiptap-editor .resizable-image-node.ProseMirror-selectednode .resizable-image-handle,
+.tiptap-editor .resizable-image-node:hover .resizable-image-handle,
+.tiptap-editor .resizable-image-node.is-resizing .resizable-image-handle {
+  opacity: 1;
+}
+
 /* Task list */
 .tiptap-editor ul[data-type='taskList'] {
   list-style: none;

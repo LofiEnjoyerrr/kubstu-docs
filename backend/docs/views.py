@@ -463,6 +463,25 @@ class DocumentCommentsAPIView(APIView):
         _broadcast_to_doc(pk, {'type': 'broadcast_comment_add', 'comment': dict(data)})
         return Response(data, status=status.HTTP_201_CREATED)
 
+    def delete(self, request, pk):
+        if not request.user.is_authenticated:
+            raise PermissionDenied('Требуется авторизация')
+        document = _get_document_or_404(pk)
+        _require_owner(document, request.user)
+
+        comment_ids = list(
+            Comment.objects.filter(document=document).values_list('id', flat=True),
+        )
+        if comment_ids:
+            Comment.objects.filter(pk__in=comment_ids).delete()
+            for comment_id in comment_ids:
+                _broadcast_to_doc(pk, {
+                    'type': 'broadcast_comment_delete',
+                    'comment_id': comment_id,
+                })
+
+        return Response(status=status.HTTP_204_NO_CONTENT)
+
 
 class DocumentCommentDetailAPIView(APIView):
     permission_classes = [IsAuthenticated]
