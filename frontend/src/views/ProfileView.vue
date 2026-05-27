@@ -102,9 +102,9 @@
           <div>
             <p class="font-semibold text-slate-800">Уведомления для моих документов</p>
             <p class="text-sm text-slate-500 mt-0.5">
-              Глобальный переключатель для уведомлений о редактировании всех
-              документов, которые вы создали. Настройки отдельных документов
-              работают только когда этот переключатель включён.
+              Значение по умолчанию для уведомлений о редактировании документов,
+              которые вы создали. Отдельные документы можно включать или
+              выключать независимо от этой настройки.
             </p>
             <p v-if="notificationPrefsError" class="text-xs text-red-600 mt-1">
               {{ notificationPrefsError }}
@@ -126,7 +126,7 @@
               <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"/>
               <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8H4z"/>
             </svg>
-            {{ globalEditNotificationsEnabled ? 'Выключить для всех' : 'Включить для всех' }}
+            {{ globalEditNotificationsEnabled ? 'Выключить по умолчанию' : 'Включить по умолчанию' }}
           </button>
         </div>
 

@@ -12,6 +12,8 @@ export interface NotificationPreferences {
 
 export interface DocumentNotificationPreferences extends NotificationPreferences {
   document_id: number
+  use_global_default: boolean
+  global_edit_notifications_enabled: boolean
 }
 
 export async function fetchVapidPublicKey(): Promise<string> {

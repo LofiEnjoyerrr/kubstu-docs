@@ -103,18 +103,24 @@
                   placeholder="Название"
                   aria-label="Фильтр по названию"
                 />
-                <input
-                  v-model="openedCreatedFrom"
-                  type="date"
-                  class="input"
-                  aria-label="Дата создания от"
-                />
-                <input
-                  v-model="openedCreatedTo"
-                  type="date"
-                  class="input"
-                  aria-label="Дата создания до"
-                />
+                <label class="flex flex-col gap-1">
+                  <span class="text-xs font-medium text-slate-500">Дата создания с</span>
+                  <input
+                    v-model="openedCreatedFrom"
+                    type="date"
+                    class="input"
+                    aria-label="Дата создания от"
+                  />
+                </label>
+                <label class="flex flex-col gap-1">
+                  <span class="text-xs font-medium text-slate-500">Дата создания по</span>
+                  <input
+                    v-model="openedCreatedTo"
+                    type="date"
+                    class="input"
+                    aria-label="Дата создания до"
+                  />
+                </label>
                 <button
                   type="button"
                   class="btn-secondary"

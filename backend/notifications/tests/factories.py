@@ -34,3 +34,4 @@ class DocumentNotificationSettingsFactory(factory.django.DjangoModelFactory):
 
     document = factory.SubFactory(DocumentFactory)
     edit_notifications_enabled = True
+    use_global_default = False

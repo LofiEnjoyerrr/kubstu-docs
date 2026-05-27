@@ -120,8 +120,25 @@ def test_get_document_notification_preferences_defaults_to_enabled(auth_client, 
     assert response.data == {
         'document_id': document.pk,
         'edit_notifications_enabled': True,
+        'use_global_default': True,
+        'global_edit_notifications_enabled': True,
     }
     assert DocumentNotificationSettings.objects.filter(document=document).exists()
+
+
+@pytest.mark.django_db
+def test_get_document_notification_preferences_follows_global_default(auth_client, user, document):
+    UserNotificationSettings.objects.create(user=user, edit_notifications_enabled=False)
+
+    response = auth_client.get(reverse('document-notification-preferences', args=[document.pk]))
+
+    assert response.status_code == 200
+    assert response.data == {
+        'document_id': document.pk,
+        'edit_notifications_enabled': False,
+        'use_global_default': True,
+        'global_edit_notifications_enabled': False,
+    }
 
 
 @pytest.mark.django_db
@@ -136,8 +153,11 @@ def test_patch_document_notification_preferences(auth_client, document):
     assert response.data == {
         'document_id': document.pk,
         'edit_notifications_enabled': False,
+        'use_global_default': False,
+        'global_edit_notifications_enabled': True,
     }
     assert not document.notification_settings.edit_notifications_enabled
+    assert not document.notification_settings.use_global_default
 
 
 @pytest.mark.django_db

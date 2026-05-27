@@ -35,9 +35,10 @@ class DocumentNotificationSettingsAdmin(admin.ModelAdmin):
         'document',
         'document_owner',
         'edit_notifications_enabled',
+        'use_global_default',
         'dt_updated',
     )
-    list_filter = ('edit_notifications_enabled',)
+    list_filter = ('edit_notifications_enabled', 'use_global_default')
     search_fields = ('document__title', 'document__owner__username', 'document__owner__email')
     readonly_fields = ('dt_created', 'dt_updated')
 

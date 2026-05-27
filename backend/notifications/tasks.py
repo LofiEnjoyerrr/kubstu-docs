@@ -35,18 +35,13 @@ def _vapid_claims() -> dict[str, str]:
 
 def edit_notifications_enabled(owner_id: int, doc_id: int) -> bool:
     """Return whether edit notifications are enabled for this owner/document."""
-    if UserNotificationSettings.objects.filter(
-        user_id=owner_id,
-        edit_notifications_enabled=False,
-    ).exists():
-        return False
+    document_settings = DocumentNotificationSettings.objects.filter(document_id=doc_id).first()
+    if document_settings and not document_settings.use_global_default:
+        return document_settings.edit_notifications_enabled
 
-    if DocumentNotificationSettings.objects.filter(
-        document_id=doc_id,
-        edit_notifications_enabled=False,
-    ).exists():
-        return False
-
+    user_settings = UserNotificationSettings.objects.filter(user_id=owner_id).first()
+    if user_settings:
+        return user_settings.edit_notifications_enabled
     return True
 
 

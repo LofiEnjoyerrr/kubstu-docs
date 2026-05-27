@@ -95,6 +95,44 @@ def test_global_disabled_setting_skips_send(mocker):
 
 
 @pytest.mark.django_db
+def test_document_enabled_setting_overrides_global_disabled(mocker):
+    owner = UserFactory()
+    editor = UserFactory()
+    PushSubscriptionFactory(user=owner)
+    UserNotificationSettingsFactory(user=owner, edit_notifications_enabled=False)
+    settings = DocumentNotificationSettingsFactory(
+        document__owner=owner,
+        edit_notifications_enabled=True,
+        use_global_default=False,
+    )
+    webpush = mocker.patch('notifications.tasks.webpush')
+
+    result = _call(owner=owner, editor=editor, doc_id=settings.document_id)
+
+    assert result == 'sent:1'
+    webpush.assert_called_once()
+
+
+@pytest.mark.django_db
+def test_document_default_follows_global_disabled(mocker):
+    owner = UserFactory()
+    editor = UserFactory()
+    PushSubscriptionFactory(user=owner)
+    UserNotificationSettingsFactory(user=owner, edit_notifications_enabled=False)
+    settings = DocumentNotificationSettingsFactory(
+        document__owner=owner,
+        edit_notifications_enabled=True,
+        use_global_default=True,
+    )
+    webpush = mocker.patch('notifications.tasks.webpush')
+
+    result = _call(owner=owner, editor=editor, doc_id=settings.document_id)
+
+    assert result == 'disabled'
+    webpush.assert_not_called()
+
+
+@pytest.mark.django_db
 def test_document_disabled_setting_skips_send(mocker):
     owner = UserFactory()
     editor = UserFactory()

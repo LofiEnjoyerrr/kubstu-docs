@@ -87,6 +87,11 @@ class DocumentNotificationSettings(AutoDateMixin):
         db_default=True,
         verbose_name='Уведомления о редактировании документа',
     )
+    use_global_default = models.BooleanField(
+        default=True,
+        db_default=True,
+        verbose_name='Использовать глобальную настройку',
+    )
 
     class Meta:
         verbose_name = 'Настройки уведомлений документа'
