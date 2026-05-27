@@ -257,6 +257,7 @@ onMounted(() => {
     form.last_name = auth.user.last_name
     form.username = auth.user.username
   }
+  void push.refresh()
   loadNotificationPreferences()
 })
 

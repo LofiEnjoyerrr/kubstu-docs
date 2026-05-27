@@ -149,13 +149,6 @@ export function usePushNotifications() {
     }
   }
 
-  // Intentionally NOT calling ``refresh()`` on mount. We want the profile
-  // page to show notifications as disabled by default ("Включить
-  // уведомления") regardless of whether the browser still has an old
-  // PushManager subscription lying around — the user must explicitly
-  // opt in. ``enable()`` is idempotent and will reuse any existing
-  // browser subscription, so a click here re-syncs the backend.
-
   return {
     state,
     error,
