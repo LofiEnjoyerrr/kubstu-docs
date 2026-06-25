@@ -30,15 +30,16 @@ export const CommentHighlights = Extension.create({
             if (!tr.docChanged) return marks
 
             // Map every comment's boundaries through the transaction steps.
-            // Bias +1 on `from` keeps the start at the right edge of any
-            // insertion, bias -1 on `to` pulls the end left when the
-            // character at the boundary is deleted → the range shrinks
-            // rather than swallowing adjacent text.
+            // The range is INCLUSIVE at both edges: bias -1 on `from` and
+            // bias +1 on `to` make text typed at either boundary stick to
+            // the comment, so editing the highlighted text grows or shrinks
+            // the highlight along with it. Deletions still pull the edges
+            // inward, and once the range collapses the highlight is dropped.
             return marks
               .map(m => ({
                 ...m,
-                from: tr.mapping.map(m.from, 1),
-                to:   tr.mapping.map(m.to,   -1),
+                from: tr.mapping.map(m.from, -1),
+                to:   tr.mapping.map(m.to,    1),
               }))
               .filter(m => m.from < m.to) // collapsed range → highlight gone
           },
